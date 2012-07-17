@@ -1,0 +1,12 @@
+{application, stampede,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { stampede_app, []}},
+  {env, []}
+ ]}.
