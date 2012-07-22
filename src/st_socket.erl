@@ -10,9 +10,9 @@
 %% ===================================================================
 
 listen(SocketDet) ->
-	Port = proplist:get_value(port, SocketDet, 80),
-	IP = proplist:get_value(ip, SocketDet),
-	Ssl = proplist:get_bool(ssl, SocketDet),
+	Port = proplists:get_value(port, SocketDet, 80),
+	IP = proplists:get_value(ip, SocketDet),
+	Ssl = proplists:get_bool(ssl, SocketDet),
 	do_listen(Ssl, IP, Port, SocketDet).
 
 do_listen(false, IP, Port, SocketDet) ->
@@ -30,7 +30,7 @@ do_listen(false, IP, Port, SocketDet) ->
 
 	case gen_tcp:listen(Port, FinalSockOpts) of
 		{ok, LSock} ->
-				{ok, #st_socket{sock = LSock, ssl = false, type = server, options = SocketDet}};
+			{ok, #st_socket{sock = LSock, ssl = false, type = server, options = SocketDet}};
 		Err ->
 			Err
 	end.

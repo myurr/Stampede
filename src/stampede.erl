@@ -18,6 +18,10 @@ start() ->
 %% ===================================================================
 
 listen(SocketDet, RoutingRules, Options) ->
-	{ok, Socket} = st_socket:listen(SocketDet),
-	stampede_sup:start_listener(Socket, RoutingRules, Options).
-
+	case st_socket:listen(SocketDet) of
+		{ok, ServerSocket} ->
+			Id = proplists:get_value(id, Options, ServerSocket),
+			stampede_sup:start_listener(Id, ServerSocket, RoutingRules, Options);
+		Err ->
+			Err
+	end.
