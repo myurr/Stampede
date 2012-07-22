@@ -9,9 +9,6 @@
 %% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
-
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -19,10 +16,21 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+start_listener(Protocol, IP, HandlerRules, Options) ->
+%	{ok, Socket} = open_server_socket(Protocol, IP),
+	io:format("Opened the socket~n").
+%	ChildSpec = {}
+%	supervisor:start_child(?MODULE, ChildSpec).
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([]) ->
     {ok, { {one_for_one, 5, 10}, []} }.
+
+
+%% ===================================================================
+%% Internal functions
+%% ===================================================================
 

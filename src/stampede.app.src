@@ -1,12 +1,13 @@
 {application, stampede,
  [
-  {description, ""},
-  {vsn, "1"},
+  {description, "Stampede Embedable Web Server"},
+  {vsn, "1.0.0"},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib
                  ]},
   {mod, { stampede_app, []}},
+  {modules, [stampede]},
   {env, []}
  ]}.
