@@ -23,7 +23,7 @@ do_listen(false, IP, Port, SocketDet) ->
 		{reuseaddr, true},
 		{packet_size, 16384},
 		{recbuf, 16384},
-		{backlog, 100}
+		{backlog, proplists:get_value(backlog, SocketDet, 100)}
 	],
 
 	FinalSockOpts = if IP == undefined -> SockOpts; true -> [{ip, IP} | SockOpts] end,

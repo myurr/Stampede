@@ -5,12 +5,12 @@
 % API
 -export([start_link/3]).
 
-% Supervisor callbacks
+% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % State record
 -record(state, {server_socket = undefined, routing_rules = [], worker_count = 0, 
-					max_workers = infinity, min_workers = 100}).
+					max_workers = infinity, min_workers = 100, worker_options = []}).
 
 %% ===================================================================
 %% API functions
@@ -32,6 +32,7 @@ start_link(ServerSocket, RoutingRules, Options) ->
 init([ServerSocket, RoutingRules, Options]) ->
 	io:format("Connection ~s initialised.~n", [st_socket:name(ServerSocket)]),
 	State = #state{server_socket = ServerSocket, routing_rules = RoutingRules, worker_count = 0,
+					worker_options = proplists:get_value(workers, Options, []),
 					max_workers = proplists:get_value(max_connections, Options, infinity),
 					min_workers = proplists:get_value(idle_pool, Options, 100)},
 
@@ -65,7 +66,7 @@ handle_cast(Request, State) ->
 
 % Initialisation trigger...  create the initial worker pool
 handle_info(timeout, State) ->
-	[ io:format("~p~n", [N]) || N <- lists:seq(1, State#state.min_workers) ],
+	[ start_child(State) || _ <- lists:seq(1, State#state.min_workers) ],
 	{noreply, State};
 
 handle_info(Msg, State) ->
@@ -88,3 +89,10 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
+
+%% ===================================================================
+%% Support functions
+%% ===================================================================
+
+start_child(State) ->
+	stampede_transport:start_link(self(), State#state.server_socket, State#state.routing_rules, State#state.worker_options).
