@@ -3,14 +3,14 @@
 -behaviour(gen_server).
 
 % API
--export([start_link/3]).
+-export([start_link/3, connection_accepted/1]).
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % State record
 -record(state, {server_socket = undefined, routing_rules = [], worker_count = 0, 
-					max_workers = infinity, min_workers = 100, worker_options = []}).
+					max_workers = infinity, min_workers = 1, worker_options = []}).
 
 %% ===================================================================
 %% API functions
@@ -18,6 +18,9 @@
 
 start_link(ServerSocket, RoutingRules, Options) ->
 	gen_server:start_link(?MODULE, [ServerSocket, RoutingRules, Options], []).
+
+connection_accepted(ParentPid) ->
+	gen_server:cast(ParentPid, connection_accepted).
 
 
 %% ===================================================================
@@ -34,7 +37,7 @@ init([ServerSocket, RoutingRules, Options]) ->
 	State = #state{server_socket = ServerSocket, routing_rules = RoutingRules, worker_count = 0,
 					worker_options = proplists:get_value(workers, Options, []),
 					max_workers = proplists:get_value(max_connections, Options, infinity),
-					min_workers = proplists:get_value(idle_pool, Options, 100)},
+					min_workers = proplists:get_value(idle_workers, Options, 10)},
 
 	% We want to receive a message when a child exits, so we can reduce the worker count
 	process_flag(trap_exit, true),
@@ -55,6 +58,10 @@ handle_call(Request, From, State) ->
 %% Handle Cast
 %% =========================
 
+handle_cast(connection_accepted, State) ->
+	NewState = start_child(State),
+	{noreply, NewState};
+
 handle_cast(Request, State) ->
 	io:format("Unexpected cast to stampede_listener: ~p, ~p~n", [Request, State]),
 	{noreply, State}.
@@ -66,7 +73,7 @@ handle_cast(Request, State) ->
 
 % Initialisation trigger...  create the initial worker pool
 handle_info(timeout, State) ->
-	[ start_child(State) || _ <- lists:seq(1, State#state.min_workers) ],
+	start_children(State, State#state.min_workers),
 	{noreply, State};
 
 handle_info(Msg, State) ->
@@ -94,5 +101,13 @@ code_change(_OldVsn, State, _Extra) ->
 %% Support functions
 %% ===================================================================
 
+start_children(State, NumToStart) when NumToStart > 0 ->
+	NewState = start_child(State),
+	start_children(NewState, NumToStart - 1);
+start_children(State, _) ->
+	State.
+
 start_child(State) ->
-	stampede_transport:start_link(self(), State#state.server_socket, State#state.routing_rules, State#state.worker_options).
+	stampede_transport:start_link(self(), State#state.server_socket, State#state.routing_rules, State#state.worker_options),
+	State#state{worker_count = State#state.worker_count + 1}.
+

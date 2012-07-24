@@ -3,13 +3,13 @@
 -behaviour(gen_server).
 
 % API
--export([start_link/3]).
+-export([start_link/4]).
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % State record
--record(transstate, {rec_state, parent_pool, server_socket, routing_rules, options,
+-record(transstate, {rec_state, parent_pool, server_socket, socket, routing_rules, options,
 						timeout_header}).
 
 %% ===================================================================
@@ -33,7 +33,7 @@ init([ParentPool, ServerSocket, RoutingRules, Options]) ->
 	io:format("Worker on socket ~s initialised.~n", [st_socket:name(ServerSocket)]),
 	State = #transstate{rec_state = accept, parent_pool = ParentPool, server_socket = ServerSocket,
 							routing_rules = RoutingRules, options = Options,
-							timeout_header = proplists:get_value(timeout_header, Options, 30)},
+							timeout_header = proplists:get_value(timeout_header, Options, 30000)},
 	{ok, State, 0}.
 
 
@@ -63,11 +63,11 @@ handle_cast(Request, State) ->
 handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocket, parent_pool = Parent} = State) ->
     {ok, Socket} = st_socket:accept(ServerSocket),
     
-    stampede_listener:connection_accepted(Parent,
+    stampede_listener:connection_accepted(Parent),
 
     st_socket:setopts(Socket, [
     	{active, once}, 
-    	{send_timeout, ?TCP_SEND_TIMEOUT},
+    	{send_timeout, proplists:get_value(tcp_send_timeout, State#transstate.options, 30000)},
     	{send_timeout_close, true},
     	{keepalive, true},
     	{delay_send, false},

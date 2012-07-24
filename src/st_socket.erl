@@ -1,7 +1,7 @@
 -module(st_socket).
 
 %% API
--export([listen/1, name/1]).
+-export([listen/1, name/1, accept/1, setopts/2]).
 
 -record(st_socket, {sock = undefined, ssl = false, type = undefined, options = [], name = <<"undefined">>}).
 
@@ -40,3 +40,15 @@ do_listen(false, IP, Port, SocketDet) ->
 
 name(S) ->
 	S#st_socket.name.
+
+accept(ListenerSocket) when ListenerSocket#st_socket.ssl == false ->
+	case gen_tcp:accept(ListenerSocket#st_socket.sock) of
+		{ok, Socket} ->
+			{ok, ListenerSocket#st_socket{sock = Socket}};
+		Err ->
+			Err
+	end.
+
+
+setopts(Socket, Options) ->
+	inet:setopts(Socket#st_socket.sock, Options).
