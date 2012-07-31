@@ -10,7 +10,8 @@
 
 % State record
 -record(transstate, {rec_state, parent_pool, server_socket, socket, routing_rules, options,
-						timeout_header}).
+						timeout_header, timeout_keepalive,
+						request}).
 
 %% ===================================================================
 %% API functions
@@ -59,6 +60,27 @@ handle_cast(Request, State) ->
 %% Handle Info
 %% =========================
 
+
+% Receive an HTTP header
+handle_info({http, _Sock, {http_header, _, Header, _, Value}}, State) when State#transstate.rec_state == headers ->
+	{ok, NewRequest} = st_request:header(State#transstate.request, Header, Value),
+    st_socket:active_once(State#transstate.socket),
+    NewState = State#transstate{request = NewRequest},
+    {noreply, NewState, NewState#transstate.timeout_header};
+
+% Received the end of the headers
+handle_info({http, _Sock, http_eoh}, State) when State#transstate.rec_state == headers ->
+	{ok, NewRequest} = st_request:end_headers(State#transstate.request, State#transstate.socket),
+    NewState = State#transstate{request = NewRequest},
+    {noreply, NewState, NewState#transstate.timeout_header};
+
+% New request started
+handle_info({http, _Sock, {http_request, Method, {abs_path, Path}, HttpVersion}}, State) when State#transstate.rec_state == request ->
+	{ok, NewRequest} = st_request:new(Method, Path, HttpVersion),
+    st_socket:active_once(State#transstate.socket),
+    NewState = State#transstate{request = NewRequest, rec_state = headers},
+    {noreply, NewState, NewState#transstate.timeout_header};
+
 % Initialisation trigger...  create the initial worker pool
 handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocket, parent_pool = Parent} = State) ->
     {ok, Socket} = st_socket:accept(ServerSocket),
@@ -77,6 +99,10 @@ handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocke
 
     NewState = State#transstate{rec_state = request, socket = Socket},
     {noreply, NewState, NewState#transstate.timeout_header};
+
+handle_info(timeout, State) ->
+	io:format("Request timed out.~n"),
+	{stop, normal, State};
 
 handle_info(Msg, State) ->
 	io:format("Unexpected info to stampede_transport: ~p, ~p~n", [Msg, State]),

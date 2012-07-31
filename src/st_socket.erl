@@ -1,7 +1,7 @@
 -module(st_socket).
 
 %% API
--export([listen/1, name/1, accept/1, setopts/2]).
+-export([listen/1, name/1, accept/1, setopts/2, active_once/1]).
 
 -record(st_socket, {sock = undefined, ssl = false, type = undefined, options = [], name = <<"undefined">>}).
 
@@ -52,3 +52,6 @@ accept(ListenerSocket) when ListenerSocket#st_socket.ssl == false ->
 
 setopts(Socket, Options) ->
 	inet:setopts(Socket#st_socket.sock, Options).
+
+active_once(Socket) ->
+	inet:setopts(Socket#st_socket.sock, [{active, once}]).
