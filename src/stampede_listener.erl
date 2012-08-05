@@ -76,6 +76,11 @@ handle_info(timeout, State) ->
 	start_children(State, State#state.min_workers),
 	{noreply, State};
 
+% Exit signal
+handle_info({'EXIT', _PID, _Reason}, State) ->
+	{noreply, State};
+
+% Unknown signal
 handle_info(Msg, State) ->
 	io:format("Unexpected info to stampede_listener: ~p, ~p~n", [Msg, State]),
 	{noreply, State}.
