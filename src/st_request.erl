@@ -12,6 +12,7 @@
 
 -record(st_request, {socket = undefined, error = undefined, method, url, args, http_version = {1, 1},
 						headers = [], content_length = 0, host = undefined, keepalive = false,
+						if_modified_since = undefined,
 						prev_requests = []}).
 
 
@@ -63,6 +64,9 @@ header(Request, 'Connection', Value) ->
 			{ok, Request#st_request{headers = [{'Connection', Value} | Request#st_request.headers]}}
 	end;
 
+header(Request, 'If-Modified-Since', Value) ->
+	{ok, Request#st_request{content_length = stutil:to_integer(Value)}};
+
 header(Request, Key, Value) ->
 	{ok, Request#st_request{headers = [{Key, Value} | Request#st_request.headers]}}.
 
@@ -71,7 +75,7 @@ header(Request, Key, Value) ->
 %% ====================
 
 end_headers(Request) ->
-%	io:format("Request:~n~p~n~n", [Request]),
+	io:format("Request:~n~p~n~n", [Request]),
 	{ok, Request}.
 
 

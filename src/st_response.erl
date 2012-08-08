@@ -1,18 +1,17 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/5, set_headers/2, header/3, status_code/2, keepalive/2, body/2, filename/2,
+-export([new/1, new/4, set_headers/2, header/3, status_code/2, body/2, filename/2,
 		output_response/1]).
 
 %% ===================================================================
 %% Definitions
 %% ===================================================================
 
--record(st_response, {send_state = buffer, http_version = {1, 1},
+-record(st_response, {request = undefined, send_state = buffer,
 						status_code = 200, headers = [],
 						content_type = <<"text/html">>, 
-						body_type = binary, content = <<>>, content_length = undefined,
-						keepalive = false}).
+						body_type = binary, content = <<>>, content_length = undefined}).
 
 %% ===================================================================
 %% API functions
@@ -22,21 +21,16 @@
 %% Create a new response
 %% ====================
 
-new(HttpVersion) ->
-	KeepAlive = case HttpVersion of
-		{1, 1} -> 30;
-		{1, 0} -> false
-	end,
-	{ok, #st_response{http_version = HttpVersion, keepalive = KeepAlive}}.
+new(Request) ->
+	{ok, #st_response{request = Request}}.
 
-new(HttpVersion, StatusCode, Headers, Body, KeepAlive) ->
-	{ok, Response} = new(HttpVersion),
+new(Request, StatusCode, Headers, Body) ->
+	{ok, Response} = new(Request),
 	{ok, StatusCodeResponse} = status_code(Response, StatusCode),
-	{ok, HeaderResponse} = set_headers(StatusCodeResponse, Headers),
-	{ok, KeepAliveResponse} = keepalive(HeaderResponse, KeepAlive),
+	{ok, FinalResponse} = set_headers(StatusCodeResponse, Headers),
 	case Body of
-		{file, FileName} -> filename(KeepAliveResponse, FileName);
-		_ -> body(KeepAliveResponse, Body)
+		{file, FileName} -> filename(FinalResponse, FileName);
+		_ -> body(FinalResponse, Body)
 	end.
 
 
@@ -67,18 +61,6 @@ status_code(Response, StatusCode) ->
 
 
 %% ====================
-%% Set keepalive policy
-%% ====================
-
-keepalive(Response, Timeout) when is_integer(Timeout) ->
-	{ok, Response#st_response{keepalive = Timeout}};
-keepalive(Response, false) ->
-	{ok, Response#st_response{keepalive = false}};
-keepalive(_Response, Error) ->
-	{error, badarg, Error}.
-
-
-%% ====================
 %% Set the body output
 %% ====================
 
@@ -106,7 +88,7 @@ output_response(Response) when Response#st_response.body_type == binary ->
 				(output_headers(Response))/binary, 13, 10,
 				(Response#st_response.content)/binary	>>,
 		undefined,
-		Response#st_response.keepalive};
+		st_request:keepalive(Response#st_response.request)};
 
 output_response(Response) when Response#st_response.body_type == file ->
 	% io:format("Response:~n~p~n~n", [Response]),
@@ -116,11 +98,11 @@ output_response(Response) when Response#st_response.body_type == file ->
 				13, 10, 
 				(output_headers(Response))/binary, 13, 10>>,
 		{file, Fd},
-		Response#st_response.keepalive}.
+		st_request:keepalive(Response#st_response.request)}.
 
 
 output_http_version(Response) ->
-	case Response#st_response.http_version of
+	case st_request:http_version(Response#st_response.request) of
 		{1, 1} -> <<"HTTP/1.1">>;
 		{1, 0} -> <<"HTTP/1.0">>
 	end.
@@ -142,8 +124,11 @@ content_length(Response) when Response#st_response.body_type == binary ->
 content_length(Response) when Response#st_response.body_type == file ->
 	filelib:file_size(Response#st_response.content).
 
-connection_header(Response) when Response#st_response.keepalive == false ->
-	<<"Connection: close">>;
 connection_header(Response) ->
-	<<"Connection: Keep-Alive", 13, 10,
-		"Keep-Alive: timeout=", (stutil:to_binary(Response#st_response.keepalive))/binary>>.
+	case st_request:keepalive(Response#st_response.request) of
+		false ->
+			<<"Connection: close">>;
+		KA ->
+			<<"Connection: Keep-Alive", 13, 10,
+				"Keep-Alive: timeout=", (stutil:to_binary(KA))/binary>>
+	end.

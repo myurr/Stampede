@@ -17,7 +17,7 @@ to_binary(Input) when is_integer(Input) ->
 to_binary(Input) when is_atom(Input) ->
 	atom_to_binary(Input, utf8);
 to_binary(Other) ->
-	term_to_binary(Other).
+	iolist_to_binary(io_lib:format("~p", [Other])).
 
 to_integer(Input) when is_integer(Input) ->
 	Input;

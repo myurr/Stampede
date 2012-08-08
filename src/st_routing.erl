@@ -26,27 +26,6 @@ route(Request, Rules) ->
 %% Rule matching and execution functions
 %% ===================================================================
 
-% Out of rules...
-rule(_Rst, [], Request) ->
-	case st_request:method(Request) of
-		'ERROR' ->
-			% Default error message
-			StatusCode = stutil:to_integer(st_request:arg(Request, <<"error">>, 500)),
-			ErrorDetail = stutil:to_binary(st_request:arg(Request, <<"detail">>, <<"Unknown error.">>)),
-			{ok, Response} = st_response:new(
-					st_request:http_version(Request), StatusCode, [],
-					<<"<html><head><title>", (stutil:http_status_code(StatusCode))/binary, "</title></head>",
-					"<body><h1>", (stutil:http_status_code(StatusCode))/binary, "</h1><div>",
-					ErrorDetail/binary, "</div></body></html>">>,
-					false
-				),
-			{send, Response};
-
-		_ ->
-			ErrDetail = <<"Could not find the page: ", (st_request:url(Request))/binary>>,
-			{error, 404, ErrDetail}
-	end;
-
 % Match the request method
 rule(Rst, [{method, Method, SubRules} | Rules], Request) ->
 	RMethod = st_request:method(Request),
@@ -83,7 +62,7 @@ rule(Rst, [{url, MatchRule, SubRules} | Rules], Request) ->
 	end;
 
 % Match a static directory of content
-rule(Rst, [{static_dir, DefaultFile} | Rules], Request) ->
+rule(Rst, [{static_dir, DefaultFile, Options} | Rules], Request) ->
 	BaseDir = Rst#rst.path,
 	FileName = case Rst#rst.url_parts of
 		[] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
@@ -92,11 +71,8 @@ rule(Rst, [{static_dir, DefaultFile} | Rules], Request) ->
 	end,
 	case filelib:is_regular(FileName) of
 		true ->
-			{ok, Response} = st_response:new(
-					st_request:http_version(Request), ok, [],
-					{file, FileName},
-					st_request:keepalive(Request)
-				),
+			MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
+			{ok, Response} = st_response:new(Request, ok, [{<<"Content-Type">>, MimeType}], {file, FileName}),
 			{send, Response};
 		false ->
 			rule(Rst, Rules, Request)
@@ -104,20 +80,35 @@ rule(Rst, [{static_dir, DefaultFile} | Rules], Request) ->
 
 % Send some static content
 rule(_Rst, [{static, Content} | _Rules], Request) ->
-	{ok, Response} = st_response:new(
-					st_request:http_version(Request), ok, [],
-					Content,
-					st_request:keepalive(Request)
-				),
+	{ok, Response} = st_response:new(Request, ok, [], Content),
 	{send, Response};
+
+% Out of rules...
+rule(_Rst, [], Request) ->
+	case st_request:method(Request) of
+		'ERROR' ->
+			% Default error message
+			StatusCode = stutil:to_integer(st_request:url(Request)),
+			ErrorMsg = stutil:to_binary(st_request:arg(Request, <<"error">>, <<"Unknown Error">>)),
+			ErrorDetail = stutil:to_binary(st_request:arg(Request, <<"detail">>, <<"Unknown error.">>)),
+			{ok, Response} = st_response:new(
+					Request, StatusCode, [],
+					<<"<html><head><title>", (stutil:http_status_code(StatusCode))/binary, "</title></head>",
+					"<body><h1>", (stutil:http_status_code(StatusCode))/binary, "</h1><h3>", ErrorMsg/binary,
+					"</h3><div>", ErrorDetail/binary, "</div></body></html>">>
+				),
+			{send, Response};
+
+		_ ->
+			ErrDetail = <<"Could not find the page: ", (st_request:url(Request))/binary>>,
+			{error, 404, ErrDetail}
+	end;
 
 % Other rule
 rule(Rst, [Rule | _Rules], Request) ->
 	io:format("Unknown rule~n"),
-	{ok, Response} = st_response:new(
-			st_request:http_version(Request), 500, [],
-			stutil:to_binary(io_lib:format("<pre>Error unknown rule: ~p~n~n~p~n~n~p</pre>", [Rule, Rst, Request])),
-			false
+	{ok, Response} = st_response:new(Request, 500, [],
+			stutil:to_binary(io_lib:format("<pre>Error unknown rule: ~p~n~n~p~n~n~p</pre>", [Rule, Rst, Request]))
 		),
 	{send, Response};
 

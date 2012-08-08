@@ -142,18 +142,18 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 	SCStr = stutil:http_status_code(error),
 	ErrorHtml = <<"<html><head><title>Error ", SCStr/binary, "</title></head>",
 					"<body><h1>", SCStr/binary, "</h1><div>Maximum internal redirect limit reached.</div></html>">>,
-	{ok, Response} = st_response:new({1,1}, error, [], ErrorHtml, false),
+	{ok, Response} = st_response:new(State#transstate.request, error, [], ErrorHtml),
 	{ok, Data, _KeepAlive} = st_response:output_response(Response),
 	ok = st_socket:send(State#transstate.socket, Data),
 	{stop, normal, State};
 
 process_request(State) ->
-    % try
-    case
+    try
     	st_request:execute(State#transstate.request, State#transstate.routing_rules)
     of
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
+            io:format("Sending:~n~n~p~n~n", [Data]),
     		ok = st_socket:send(State#transstate.socket, Data),
     		case AdditionalContent of
     			undefined ->
@@ -169,18 +169,18 @@ process_request(State) ->
 		    		NewState = reset_request(State, true),
     				{noreply, NewState, KeepAlive * 1000}
     		end;
-    	{error, StatusCode, Detail} ->
+        {error, StatusCode, Detail} ->
     		Request = st_request:error_request(State#transstate.request, StatusCode, <<"Error">>, Detail),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1});
     	error ->
     		Request = st_request:error_request(State#transstate.request, 500, <<"Error">>, <<"Unknown">>),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
-    % catch
-    % 	Error:Reason ->
-    % 		io:format("Internal server error ~p:~p~n~p~n", [Error, Reason, erlang:get_stacktrace()]),
-    % 		ErrMsg = io_lib:format("<div>~p : ~p</div><div><pre>~p</pre></div>", [Error, Reason, erlang:get_stacktrace()])
-    % 		Request = st_request:error_request(State#transstate.request, 500, ErrMsg),
-    % 		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
+    catch
+     	Error:Reason ->
+            ErrMsg = stutil:to_binary(io_lib:format("~p : ~p", [Error, Reason])),
+            Stack = stutil:to_binary(io_lib:format("<pre>~p</pre>", [erlang:get_stacktrace()])),
+            Request = st_request:error_request(State#transstate.request, 500, ErrMsg, Stack),
+            process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
     end.
 
 reset_request(State, ResetSocket) ->
