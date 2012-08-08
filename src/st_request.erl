@@ -1,7 +1,8 @@
 -module(st_request).
 
 % Exported API
--export([new/4, terminate/1, header/3, end_headers/1, execute/1, error_request/4]).
+-export([new/4, terminate/1, header/3, end_headers/1, execute/2, error_request/4,
+		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1]).
 
 %% ===================================================================
 %% Definitions
@@ -10,7 +11,7 @@
 -define(DEFAULT_KEEPALIVE, 30).
 
 -record(st_request, {socket = undefined, error = undefined, method, url, args, http_version = {1, 1},
-						headers = [], 'Content-Length' = 0, 'Host' = undefined, keepalive = false,
+						headers = [], content_length = 0, host = undefined, keepalive = false,
 						prev_requests = []}).
 
 
@@ -44,13 +45,13 @@ terminate(Request) ->
 header(Request, 'Host', Value) ->
 	case binary:split(Value, <<$:>>) of
 		[Host, Port] ->
-			{ok, Request#st_request{'Host' = {Host, Port}}};
+			{ok, Request#st_request{host = {Host, Port}}};
 		[Host] ->
-			{ok, Request#st_request{'Host' = {Host, st_socket:port(Request#st_request.socket)}}}
+			{ok, Request#st_request{host = {Host, st_socket:port(Request#st_request.socket)}}}
 	end;
 
 header(Request, 'Content-Length', Value) ->
-	{ok, Request#st_request{'Content-Length' = stutil:to_integer(Value)}};
+	{ok, Request#st_request{content_length = stutil:to_integer(Value)}};
 
 header(Request, 'Connection', Value) ->
 	case stutil:bstr_to_lower(Value) of
@@ -70,7 +71,7 @@ header(Request, Key, Value) ->
 %% ====================
 
 end_headers(Request) ->
-	io:format("Request:~n~p~n~n", [Request]),
+%	io:format("Request:~n~p~n~n", [Request]),
 	{ok, Request}.
 
 
@@ -78,21 +79,50 @@ end_headers(Request) ->
 %% Execute a request
 %% ====================
 
-execute(Request) ->
-	{ok, Response} = st_response:new(http_version(Request), 200, [], <<"Hello World">>, Request#st_request.keepalive),
-	{send, Response}.
+execute(Request, RoutingRules) ->
+	st_routing:route(Request, RoutingRules).
+
 
 
 %% ====================
 %% Create a new error request
 %% ====================
 
-error_request(State, StatusCode, Error, Reason) ->
-	State#st_request{method = 'Error', url = stutil:to_binary(StatusCode), 
-						args = [{<<"error">>, stutil:to_binary(Error)}, {<<"reason">>, stutil:to_binary(Reason)}],
+error_request(Request, StatusCode, Error, Detail) ->
+	Request#st_request{method = 'ERROR', url = stutil:to_binary(StatusCode), 
+						args = [{<<"error">>, stutil:to_binary(Error)}, {<<"detail">>, stutil:to_binary(Detail)}],
 						headers = [],
-						prev_requests = [State | State#st_request.prev_requests]}.
+						prev_requests = [Request | Request#st_request.prev_requests]}.
 
+
+%% ====================
+%% Accessors
+%% ====================
+
+http_version(Request) ->
+	Request#st_request.http_version.
+
+method(Request) ->
+	Request#st_request.method.
+
+url(Request) ->
+	Request#st_request.url.
+
+host(Request) ->
+	Request#st_request.host.
+
+hostname(Request) ->
+	{Host, _Port} = Request#st_request.host,
+	Host.
+
+arg(Request, Key) ->
+	proplists:get_value(Key, Request#st_request.args).
+
+arg(Request, Key, Default) ->
+	proplists:get_value(Key, Request#st_request.args, Default).
+
+keepalive(Request) ->
+	Request#st_request.keepalive.
 
 %% ===================================================================
 %% Internal functions
@@ -116,5 +146,3 @@ decode_url_args([Arg | Rest], ArgList) ->
 decode_url_args([], ArgList) ->
 	ArgList.
 
-http_version(Request) ->
-	Request#st_request.http_version.

@@ -1,7 +1,8 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/5, set_headers/2, header/3, status_code/2, keepalive/2, output_response/1]).
+-export([new/1, new/5, set_headers/2, header/3, status_code/2, keepalive/2, body/2, filename/2,
+		output_response/1]).
 
 %% ===================================================================
 %% Definitions
@@ -33,7 +34,10 @@ new(HttpVersion, StatusCode, Headers, Body, KeepAlive) ->
 	{ok, StatusCodeResponse} = status_code(Response, StatusCode),
 	{ok, HeaderResponse} = set_headers(StatusCodeResponse, Headers),
 	{ok, KeepAliveResponse} = keepalive(HeaderResponse, KeepAlive),
-	body(KeepAliveResponse, Body).
+	case Body of
+		{file, FileName} -> filename(KeepAliveResponse, FileName);
+		_ -> body(KeepAliveResponse, Body)
+	end.
 
 
 %% ====================
@@ -83,17 +87,37 @@ body(Response, Body) when is_binary(Body) ->
 
 
 %% ====================
+%% Output a static file
+%% ====================
+
+filename(Response, FileName) ->
+	{ok, Response#st_response{body_type = file, content = FileName}}.
+
+
+%% ====================
 %% Output the entire body content
 %% ====================
 
 output_response(Response) when Response#st_response.body_type == binary ->
-	io:format("Response:~n~p~n~n", [Response]),
+	% io:format("Response:~n~p~n~n", [Response]),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
 				13, 10, 
 				(output_headers(Response))/binary, 13, 10,
 				(Response#st_response.content)/binary	>>,
+		undefined,
+		Response#st_response.keepalive};
+
+output_response(Response) when Response#st_response.body_type == file ->
+	% io:format("Response:~n~p~n~n", [Response]),
+	{ok, Fd} = file:open(Response#st_response.content, [read, raw, binary]),
+	{ok, <<		(output_http_version(Response))/binary, $ ,
+				(stutil:http_status_code(Response#st_response.status_code))/binary,
+				13, 10, 
+				(output_headers(Response))/binary, 13, 10>>,
+		{file, Fd},
 		Response#st_response.keepalive}.
+
 
 output_http_version(Response) ->
 	case Response#st_response.http_version of
@@ -114,7 +138,9 @@ output_headers([], Out) ->
 	Out.
 
 content_length(Response) when Response#st_response.body_type == binary ->
-	byte_size(Response#st_response.content).
+	byte_size(Response#st_response.content);
+content_length(Response) when Response#st_response.body_type == file ->
+	filelib:file_size(Response#st_response.content).
 
 connection_header(Response) when Response#st_response.keepalive == false ->
 	<<"Connection: close">>;

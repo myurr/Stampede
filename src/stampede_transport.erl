@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 % Definitions and constants
--define(MAX_INTERNAL_REDIRECT, 10).
+-define(MAX_INTERNAL_REDIRECT, 2).
 
 % API
 -export([start_link/4]).
@@ -101,9 +101,7 @@ handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocke
     	{reuseaddr, true}
     ]),
 
-    io:format("Resetting request~n"),
     NewState = reset_request(State#transstate{socket = Socket}, false),
-    io:format("Resetting request done~n"),
     {noreply, NewState, NewState#transstate.timeout_header};
 
 % Timeout waiting for client
@@ -150,23 +148,39 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 	{stop, normal, State};
 
 process_request(State) ->
-    try
-    	st_request:execute(State#transstate.request)
+    % try
+    case
+    	st_request:execute(State#transstate.request, State#transstate.routing_rules)
     of
     	{send, Response} ->
-    		{ok, Data, KeepAlive} = st_response:output_response(Response),
+    		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
     		ok = st_socket:send(State#transstate.socket, Data),
+    		case AdditionalContent of
+    			undefined ->
+    				ok;
+    			{file, Fd} ->
+	    			st_socket:send_file(State#transstate.socket, Fd),
+	    			file:close(Fd)
+    		end,
     		case KeepAlive of
     			false ->
     				{stop, normal, State};
     			_ ->
 		    		NewState = reset_request(State, true),
     				{noreply, NewState, KeepAlive * 1000}
-    		end
-    catch
-    	Error:Reason ->
-    		Request = st_request:error_request(State#transstate.request, 500, Error, Reason),
+    		end;
+    	{error, StatusCode, Detail} ->
+    		Request = st_request:error_request(State#transstate.request, StatusCode, <<"Error">>, Detail),
+    		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1});
+    	error ->
+    		Request = st_request:error_request(State#transstate.request, 500, <<"Error">>, <<"Unknown">>),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
+    % catch
+    % 	Error:Reason ->
+    % 		io:format("Internal server error ~p:~p~n~p~n", [Error, Reason, erlang:get_stacktrace()]),
+    % 		ErrMsg = io_lib:format("<div>~p : ~p</div><div><pre>~p</pre></div>", [Error, Reason, erlang:get_stacktrace()])
+    % 		Request = st_request:error_request(State#transstate.request, 500, ErrMsg),
+    % 		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
     end.
 
 reset_request(State, ResetSocket) ->

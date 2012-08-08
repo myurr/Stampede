@@ -1,7 +1,7 @@
 -module(stutil).
 
 -export([to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
-		urldecode/1, http_status_code/1]).
+		urldecode/1, http_status_code/1, make_list/1]).
 
 timestamp() ->
 	{MegaSeconds, Seconds, _MS} = now(),
@@ -15,14 +15,18 @@ to_binary(Input) when is_list(Input) ->
 to_binary(Input) when is_integer(Input) ->
 	iolist_to_binary(integer_to_list(Input));
 to_binary(Input) when is_atom(Input) ->
-	atom_to_binary(Input, utf8).
+	atom_to_binary(Input, utf8);
+to_binary(Other) ->
+	term_to_binary(Other).
 
 to_integer(Input) when is_integer(Input) ->
 	Input;
 to_integer(Input) when is_binary(Input) ->
 	list_to_integer(binary_to_list(Input));
 to_integer(Input) when is_list(Input) ->
-	list_to_integer(Input).
+	list_to_integer(Input);
+to_integer(Input) when is_atom(Input) ->
+	list_to_integer(atom_to_list(Input)).
 
 
 bstr_to_upper(Str) ->
@@ -111,6 +115,11 @@ urlunhex(Chr) when Chr >= $a, Chr =< $f -> Chr - $a + 10;
 urlunhex(Chr) when Chr >= $0, Chr =< $9 -> Chr - $0;
 urlunhex(_) -> error.
 
+
+make_list(Item) when is_list(Item) ->
+	Item;
+make_list(Item) ->
+	[Item].
 
 %% ====================
 %% HTTP Status codes

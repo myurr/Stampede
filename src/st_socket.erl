@@ -1,7 +1,7 @@
 -module(st_socket).
 
 %% API
--export([listen/1, port/1, name/1, accept/1, setopts/2, active_once/1, close/1, send/2]).
+-export([listen/1, port/1, name/1, accept/1, setopts/2, active_once/1, close/1, send/2, send_file/2]).
 
 -record(st_socket, {sock = undefined, port = 0, ssl = false, type = undefined, options = [], name = <<"undefined">>}).
 
@@ -65,3 +65,6 @@ close(Socket) when Socket#st_socket.ssl == false ->
 
 send(Socket, Data) when Socket#st_socket.ssl == false ->
 	gen_tcp:send(Socket#st_socket.sock, Data).
+
+send_file(Socket, Fd) when Socket#st_socket.ssl == false ->
+	file:sendfile(Fd, Socket#st_socket.sock, 0, 0, []).
