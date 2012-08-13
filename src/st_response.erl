@@ -1,17 +1,21 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/4, set_headers/2, header/3, status_code/2, body/2, filename/2,
-		output_response/1]).
+-export([new/1, new/4, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2,
+		output_response/1, last_modified/2]).
+
 
 %% ===================================================================
 %% Definitions
 %% ===================================================================
 
+-include_lib("kernel/include/file.hrl").
+
 -record(st_response, {request = undefined, send_state = buffer,
 						status_code = 200, headers = [],
 						content_type = <<"text/html">>, 
-						body_type = binary, content = <<>>, content_length = undefined}).
+						body_type = binary, content = <<>>, content_length = undefined,
+						last_modified}).
 
 %% ===================================================================
 %% API functions
@@ -59,6 +63,9 @@ header(Response, Key, Value) ->
 status_code(Response, StatusCode) ->
 	{ok, Response#st_response{status_code = StatusCode}}.
 
+status_code(Response) ->
+	Response#st_response.status_code.
+
 
 %% ====================
 %% Set the body output
@@ -66,6 +73,14 @@ status_code(Response, StatusCode) ->
 
 body(Response, Body) when is_binary(Body) ->
 	{ok, Response#st_response{body_type = binary, content = Body}}.
+
+
+%% ====================
+%% Set the last modified date
+%% ====================
+
+last_modified(Response, Date) ->
+	{ok, Response#st_response{last_modified = Date}}.
 
 
 %% ====================
@@ -107,11 +122,23 @@ output_http_version(Response) ->
 		{1, 0} -> <<"HTTP/1.0">>
 	end.
 
+
+output_headers(Response) when Response#st_response.body_type == file ->
+	{ok, FileInfo} = file:read_file_info(Response#st_response.content),
+	MTime = FileInfo#file_info.mtime,
+	% io:format("Last modified: ~p~n", [MTime]),
+	<<(output_headers(Response#st_response.headers, <<>>))/binary,
+		(connection_header(Response))/binary, 13, 10,
+		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
+		"Last-Modified: ", (stutil:to_binary(httpd_util:rfc1123_date(MTime)))/binary, 13, 10,
+		"Content-Length: ", (stutil:to_binary(FileInfo#file_info.size))/binary, 13, 10>>;
+
 output_headers(Response) ->
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
 		(connection_header(Response))/binary, 13, 10,
 		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
 		"Content-Length: ", (stutil:to_binary(content_length(Response)))/binary, 13, 10>>.
+
 
 output_headers([{Key, Value} | Rest], Out) ->
 	output_headers(Rest,

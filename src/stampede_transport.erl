@@ -34,7 +34,7 @@ start_link(ParentPool, ServerSocket, RoutingRules, Options) ->
 %% =========================
 
 init([ParentPool, ServerSocket, RoutingRules, Options]) ->
-	io:format("Worker on socket ~s initialised.~n", [st_socket:name(ServerSocket)]),
+	% io:format("Worker on socket ~s initialised.~n", [st_socket:name(ServerSocket)]),
 	State = #transstate{rec_state = accept, x_state = error, 
 							parent_pool = ParentPool, server_socket = ServerSocket,
 							routing_rules = RoutingRules, options = Options,
@@ -67,6 +67,7 @@ handle_cast(Request, State) ->
 
 % Receive an HTTP header
 handle_info({http, _Sock, {http_header, _, Header, _, Value}}, State) when State#transstate.rec_state == headers ->
+	% io:format("Header: ~p = ~p~n", [Header, Value]),
 	{ok, NewRequest} = st_request:header(State#transstate.request, Header, Value),
     st_socket:active_once(State#transstate.socket),
     NewState = State#transstate{request = NewRequest},
@@ -88,7 +89,8 @@ handle_info({http, _Sock, {http_request, Method, {abs_path, Path}, HttpVersion}}
 % Initialisation trigger...  create the initial worker pool
 handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocket, parent_pool = Parent} = State) ->
     {ok, Socket} = st_socket:accept(ServerSocket),
-    
+
+    unlink(Parent),
     stampede_listener:connection_accepted(Parent),
 
     st_socket:setopts(Socket, [
@@ -148,12 +150,13 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 	{stop, normal, State};
 
 process_request(State) ->
-    try
+ %   try
+ 	case
     	st_request:execute(State#transstate.request, State#transstate.routing_rules)
     of
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
-            io:format("Sending:~n~n~p~n~n", [Data]),
+            % io:format("Sending:~n~n~p~n~n", [Data]),
     		ok = st_socket:send(State#transstate.socket, Data),
     		case AdditionalContent of
     			undefined ->
@@ -175,12 +178,12 @@ process_request(State) ->
     	error ->
     		Request = st_request:error_request(State#transstate.request, 500, <<"Error">>, <<"Unknown">>),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
-    catch
-     	Error:Reason ->
-            ErrMsg = stutil:to_binary(io_lib:format("~p : ~p", [Error, Reason])),
-            Stack = stutil:to_binary(io_lib:format("<pre>~p</pre>", [erlang:get_stacktrace()])),
-            Request = st_request:error_request(State#transstate.request, 500, ErrMsg, Stack),
-            process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
+    % catch
+    %  	Error:Reason ->
+    %         ErrMsg = stutil:to_binary(io_lib:format("~p : ~p", [Error, Reason])),
+    %         Stack = stutil:to_binary(io_lib:format("<pre>~p</pre>", [erlang:get_stacktrace()])),
+    %         Request = st_request:error_request(State#transstate.request, 500, ErrMsg, Stack),
+    %         process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
     end.
 
 reset_request(State, ResetSocket) ->

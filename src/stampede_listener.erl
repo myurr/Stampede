@@ -78,7 +78,8 @@ handle_info(timeout, State) ->
 
 % Exit signal
 handle_info({'EXIT', _PID, _Reason}, State) ->
-	{noreply, State};
+	io:format("Exit signal received.~n"),
+	{noreply, start_child(State)};
 
 % Unknown signal
 handle_info(Msg, State) ->

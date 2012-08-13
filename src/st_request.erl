@@ -2,7 +2,8 @@
 
 % Exported API
 -export([new/4, terminate/1, header/3, end_headers/1, execute/2, error_request/4,
-		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1]).
+		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1,
+		if_modified_since/1]).
 
 %% ===================================================================
 %% Definitions
@@ -26,7 +27,7 @@
 
 new(Socket, Method, Path, Version) ->
 	{ok, Url, Args} = decode_url(Path),
-	io:format("Method ~p, URL ~p, Args ~p, Version ~p~n", [Method, Url, Args, Version]),
+	% io:format("Method ~p, URL ~p, Args ~p, Version ~p~n", [Method, Url, Args, Version]),
 	{ok, #st_request{socket = Socket, method = Method, url = Url, args = Args, http_version = Version,
 					keepalive = if Version == {1,1} -> ?DEFAULT_KEEPALIVE; true -> false end}}.
 
@@ -65,7 +66,7 @@ header(Request, 'Connection', Value) ->
 	end;
 
 header(Request, 'If-Modified-Since', Value) ->
-	{ok, Request#st_request{content_length = stutil:to_integer(Value)}};
+	{ok, Request#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
 
 header(Request, Key, Value) ->
 	{ok, Request#st_request{headers = [{Key, Value} | Request#st_request.headers]}}.
@@ -75,7 +76,7 @@ header(Request, Key, Value) ->
 %% ====================
 
 end_headers(Request) ->
-	io:format("Request:~n~p~n~n", [Request]),
+	% io:format("Request:~n~p~n~n", [Request]),
 	{ok, Request}.
 
 
@@ -126,7 +127,11 @@ arg(Request, Key, Default) ->
 	proplists:get_value(Key, Request#st_request.args, Default).
 
 keepalive(Request) ->
+	% false.
 	Request#st_request.keepalive.
+
+if_modified_since(Request) ->
+	Request#st_request.if_modified_since.
 
 %% ===================================================================
 %% Internal functions

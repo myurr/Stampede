@@ -1,7 +1,10 @@
 -module(stutil).
 
--export([to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
+-export([init/0, to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1]).
+
+init() ->
+	ok.
 
 timestamp() ->
 	{MegaSeconds, Seconds, _MS} = now(),
@@ -127,6 +130,7 @@ make_list(Item) ->
 
 http_status_code(ok)			-> <<"200 OK">>;
 http_status_code(found)			-> <<"302 Found">>;
+http_status_code(not_modified)	-> <<"304 Not Modified">>;
 http_status_code(bad_request)	-> <<"400 Bad Request">>;
 http_status_code(unauthorized)	-> <<"401 Unauthorized">>;
 http_status_code(forbidden)		-> <<"403 Forbidden">>;

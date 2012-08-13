@@ -1,16 +1,14 @@
 -module(stampede).
 
 %% Application helper functions
--export([start/0]).
--export([listen/3]).
+-export([start/0, listen/3, nodes/1]).
 
 %% ===================================================================
 %% Application helper functions
 %% ===================================================================
 
 start() ->
-	application:start(stampede).
-
+	ok = application:start(stampede).
 
 
 %% ===================================================================
@@ -25,3 +23,11 @@ listen(SocketDet, RoutingRules, Options) ->
 		Err ->
 			Err
 	end.
+
+
+%% ===================================================================
+%% Initialise stampede, connect it to other nodes
+%% ===================================================================
+
+nodes(_NodeList) ->
+	ok.

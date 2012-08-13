@@ -6,8 +6,6 @@ get_type(<<".html">>) ->
 	<<"text/html">>;
 get_type(<<".css">>) ->
 	<<"text/css">>;
-get_type(<<".txt">>) ->
-	<<"text/plain">>;
 get_type(<<".js">>) ->
 	<<"application/x-javascript">>;
 get_type(<<".jpg">>) ->
@@ -18,6 +16,10 @@ get_type(<<".gif">>) ->
 	<<"image/gif">>;
 get_type(<<".png">>) ->
 	<<"image/png">>;
+get_type(<<".ico">>) ->
+	<<"image/vnd.microsoft.icon">>;
+get_type(<<".txt">>) ->
+	<<"text/plain">>;
 get_type(<<".xml">>) ->
 	<<"application/xml">>;
 get_type(<<".mp3">>) ->
