@@ -1,7 +1,7 @@
 -module(st_routing).
 
 % Exported API
--export([route/2]).
+-export([route/3]).
 
 %% ===================================================================
 %% Definitions
@@ -9,7 +9,9 @@
 
 -include_lib("kernel/include/file.hrl").
 
--record(rst, {path = undefined, base_path = undefined, url_parts = [], browser_cache_for = undefined}).
+-record(rst, {site = undefined, site_definitions = [], path = undefined, base_path = undefined,
+				routes = [],
+				url_parts = [], browser_cache_for = undefined, session = undefined}).
 
 %% ===================================================================
 %% API functions
@@ -19,8 +21,8 @@
 %% Route a request
 %% ====================
 
-route(Request, Rules) ->
-	Rst = #rst{url_parts = split_url(st_request:url(Request))},
+route(Request, Rules, SiteDefinitions) ->
+	Rst = #rst{site_definitions = SiteDefinitions, url_parts = split_url(st_request:url(Request)), routes = Rules},
 	rule(Rst, Rules, Request).
 
 
@@ -56,7 +58,8 @@ rule(Rst, [{path, Path} | Rules], Request) ->
 
 % Match a URL
 rule(Rst, [{url, MatchRule, SubRules} | Rules], Request) ->
-	% io:format("Url match: ~p vs ~p = ~p~n", [Rst#rst.url_parts, split_url(MatchRule), url_match(Rst#rst.url_parts, split_url(MatchRule))]),
+	% io:format("Url match: ~p vs ~p = ~p~n", [Rst#rst.url_parts, split_url(MatchRule), 
+												% url_match(Rst#rst.url_parts, split_url(MatchRule))]),
 	case url_match(Rst#rst.url_parts, split_url(MatchRule)) of
 		{match, Url} ->
 			rule(Rst#rst{url_parts = Url}, SubRules, Request);
@@ -116,6 +119,46 @@ rule(Rst, [{browser_cache_for, Delta} | Rules], Request) ->
 rule(Rst, [{static, Content} | _Rules], Request) ->
 	{ok, Response} = st_response:new(Request, ok, [], Content),
 	{send, finalise_response(Response, Rst, Request)};
+
+
+% We know which site we are now, replace the rules with the site's rules
+rule(Rst, [{site, SiteName} | _Rules], Request) ->
+	case stampede_site:lookup(Rst#rst.site_definitions, SiteName) of
+		undefined ->
+			{error, site_not_found};
+		Site ->
+			Routes = stampede_site:routes(Site),
+			rule(Rst#rst{site = Site, routes = Routes}, Routes, st_request:site(Request, Site))
+	end;
+
+
+% Session handling
+rule(Rst, [{session, _Options} | _Rules], _Request) when Rst#rst.site =:= undefined ->
+	{error, 500, <<"Session rule called before a site has been set.">>};
+rule(Rst, [{session, Options} | Rules], Request) ->
+	{ok, NewRequest} = st_request:lookup_session(Request, Options),
+	rule(Rst, Rules, NewRequest);
+
+
+% Dynamic erlang call
+rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
+	case call_erlang(CallDetails, Rst, Request) of
+		{reroute, Url} ->
+			rule(Rst#rst{url_parts = split_url(Url)}, Rst#rst.routes, Request);
+		{continue} ->
+			rule(Rst, Rules, Request);
+		{continue, NewRequest} ->
+			rule(Rst, Rules, NewRequest);
+		{continue, NewRequest, NewRst} ->
+			rule(NewRst, Rules, NewRequest);
+		{continue, NewRequest, NewRst, NewRules} ->
+			rule(NewRst, NewRules, NewRequest);
+		{send, Response} ->
+			{send, finalise_response(Response, Rst, Request)};
+		{raw_send, Response} ->
+			{send, Response}
+	end;
+
 
 % Out of rules...
 rule(Rst, [], Request) ->
@@ -221,3 +264,10 @@ calc_cache_date(Delta) ->
 
 delta_to_seconds({{Y, M, D}, {Hr, Min, Sec}}) ->
 	Sec + (Min * 60) + (Hr * 3600) + (D * 86400) + (M * 2629800) + (Y * 31557600).
+
+call_erlang(CallDetails, Rst, Request) ->
+	case CallDetails of
+		{call, ErlFun, Args} ->
+			ErlFun(Request, Rst, Args)
+	end.
+

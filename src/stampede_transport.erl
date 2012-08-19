@@ -6,22 +6,22 @@
 -define(MAX_INTERNAL_REDIRECT, 2).
 
 % API
--export([start_link/4]).
+-export([start_link/5]).
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % State record
 -record(transstate, {rec_state, x_state, parent_pool, server_socket, socket, routing_rules, options,
-						timeout_header, timeout_keepalive, redirect_count,
+						timeout_header, timeout_keepalive, redirect_count, site_definitions, 
 						request}).
 
 %% ===================================================================
 %% API functions
 %% ===================================================================
 
-start_link(ParentPool, ServerSocket, RoutingRules, Options) ->
-	gen_server:start_link(?MODULE, [ParentPool, ServerSocket, RoutingRules, Options], []).
+start_link(ParentPool, ServerSocket, RoutingRules, SiteDefinitions, Options) ->
+	gen_server:start_link(?MODULE, [ParentPool, ServerSocket, RoutingRules, SiteDefinitions, Options], []).
 
 
 %% ===================================================================
@@ -33,9 +33,9 @@ start_link(ParentPool, ServerSocket, RoutingRules, Options) ->
 %% Initialisation
 %% =========================
 
-init([ParentPool, ServerSocket, RoutingRules, Options]) ->
+init([ParentPool, ServerSocket, RoutingRules, SiteDefinitions, Options]) ->
 	% io:format("Worker on socket ~s initialised.~n", [st_socket:name(ServerSocket)]),
-	State = #transstate{rec_state = accept, x_state = error, 
+	State = #transstate{rec_state = accept, x_state = error, site_definitions = SiteDefinitions,
 							parent_pool = ParentPool, server_socket = ServerSocket,
 							routing_rules = RoutingRules, options = Options,
 							timeout_header = proplists:get_value(timeout_header, Options, 30000)},
@@ -152,7 +152,7 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 process_request(State) ->
  %   try
  	case
-    	st_request:execute(State#transstate.request, State#transstate.routing_rules)
+    	st_request:execute(State#transstate.request, State#transstate.routing_rules, State#transstate.site_definitions)
     of
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
@@ -167,8 +167,10 @@ process_request(State) ->
     		end,
     		case KeepAlive of
     			false ->
+                    st_request:save_session(st_response:request(Response)),
     				{stop, normal, State};
     			_ ->
+                    st_request:tidy(st_request:save_session(st_response:request(Response))),
 		    		NewState = reset_request(State, true),
     				{noreply, NewState, KeepAlive * 1000}
     		end;

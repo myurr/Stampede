@@ -1,7 +1,7 @@
 -module(stampede).
 
 %% Application helper functions
--export([start/0, listen/3, nodes/1]).
+-export([start/0, listen/4, nodes/1]).
 
 %% ===================================================================
 %% Application helper functions
@@ -15,11 +15,11 @@ start() ->
 %% Listener helper functions
 %% ===================================================================
 
-listen(SocketDet, RoutingRules, Options) ->
+listen(SocketDet, RoutingRules, SiteDefinitions, Options) ->
 	case st_socket:listen(SocketDet) of
 		{ok, ServerSocket} ->
 			Id = proplists:get_value(id, Options, ServerSocket),
-			stampede_sup:start_listener(Id, ServerSocket, RoutingRules, Options);
+			stampede_sup:start_listener(Id, ServerSocket, RoutingRules, SiteDefinitions, Options);
 		Err ->
 			Err
 	end.
@@ -30,4 +30,8 @@ listen(SocketDet, RoutingRules, Options) ->
 %% ===================================================================
 
 nodes(_NodeList) ->
+	ok = stampede_site:init(),
 	ok.
+
+
+

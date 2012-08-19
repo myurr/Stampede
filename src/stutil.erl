@@ -1,10 +1,34 @@
 -module(stutil).
 
 -export([init/0, to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
-		urldecode/1, http_status_code/1, make_list/1]).
+		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1]).
 
 init() ->
+	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
+	random:seed(A,B,C),
 	ok.
+
+
+%%% Generate Random Strings
+
+random_string(Length) ->
+	random_string(Length, <<>>).
+	
+random_string(Length, Str) when byte_size(Str) >= Length ->
+	Str;
+random_string(Length, Str) ->
+	Rnd = crypto:rand_uniform(1, 62),
+	Char = map_char(Rnd),
+	random_string(Length, <<Str/bytes, Char>>).
+
+map_char(N) when N > 36 ->
+	$A + N - 37;
+map_char(N) when N > 10 ->
+	$a + N - 11;
+map_char(N) ->
+	$0 + N - 1.
+
+
 
 timestamp() ->
 	{MegaSeconds, Seconds, _MS} = now(),
@@ -123,6 +147,20 @@ make_list(Item) when is_list(Item) ->
 	Item;
 make_list(Item) ->
 	[Item].
+
+trim_str(Str) ->
+	trim_rear(trim_front(Str)).
+
+trim_front(<<$ , Str/binary>>) ->
+	trim_front(Str);
+trim_front(Str) ->
+	Str.
+
+trim_rear(Str) ->
+	case binary:last(Str) of
+		<<$ >> -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
+		_ -> Str
+	end.
 
 %% ====================
 %% HTTP Status codes

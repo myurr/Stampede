@@ -1,9 +1,10 @@
 -module(st_request).
 
 % Exported API
--export([new/4, terminate/1, header/3, end_headers/1, execute/2, error_request/4,
+-export([new/4, terminate/1, header/3, end_headers/1, execute/3, error_request/4,
 		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1,
-		if_modified_since/1]).
+		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
+		tidy/1]).
 
 %% ===================================================================
 %% Definitions
@@ -11,9 +12,9 @@
 
 -define(DEFAULT_KEEPALIVE, 30).
 
--record(st_request, {socket = undefined, error = undefined, method, url, args, http_version = {1, 1},
-						headers = [], content_length = 0, host = undefined, keepalive = false,
-						if_modified_since = undefined,
+-record(st_request, {socket = undefined, error = undefined, method, url, full_url, args, http_version = {1, 1},
+						headers = [], content_length = 0, host = undefined, keepalive = false, site = undefined,
+						cookies = [], if_modified_since = undefined, session = undefined,
 						prev_requests = []}).
 
 
@@ -28,7 +29,7 @@
 new(Socket, Method, Path, Version) ->
 	{ok, Url, Args} = decode_url(Path),
 	% io:format("Method ~p, URL ~p, Args ~p, Version ~p~n", [Method, Url, Args, Version]),
-	{ok, #st_request{socket = Socket, method = Method, url = Url, args = Args, http_version = Version,
+	{ok, #st_request{socket = Socket, method = Method, url = Url, full_url = Path, args = Args, http_version = Version,
 					keepalive = if Version == {1,1} -> ?DEFAULT_KEEPALIVE; true -> false end}}.
 
 
@@ -68,6 +69,9 @@ header(Request, 'Connection', Value) ->
 header(Request, 'If-Modified-Since', Value) ->
 	{ok, Request#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
 
+header(Request, 'Cookie', Value) ->
+	{ok, Request#st_request{cookies = decode_cookies(binary:split(Value, <<$;>>, [global]), Request#st_request.cookies)}};
+
 header(Request, Key, Value) ->
 	{ok, Request#st_request{headers = [{Key, Value} | Request#st_request.headers]}}.
 
@@ -84,8 +88,8 @@ end_headers(Request) ->
 %% Execute a request
 %% ====================
 
-execute(Request, RoutingRules) ->
-	st_routing:route(Request, RoutingRules).
+execute(Request, RoutingRules, SiteDefinitions) ->
+	st_routing:route(Request, RoutingRules, SiteDefinitions).
 
 
 
@@ -98,6 +102,50 @@ error_request(Request, StatusCode, Error, Detail) ->
 						args = [{<<"error">>, stutil:to_binary(Error)}, {<<"detail">>, stutil:to_binary(Detail)}],
 						headers = [],
 						prev_requests = [Request | Request#st_request.prev_requests]}.
+
+
+%% ====================
+%% Session Management
+%% ====================
+
+lookup_session(Request, Options) ->
+	SessionCookie = proplists:get_value(session_cookie_name, Options,
+						proplists:get_value(session_cookie_name, stampede_site:config(site(Request)), <<"sid">>)),
+	case st_session:load(site(Request), cookie(Request, SessionCookie)) of
+		undefined ->
+			NewSession = st_session:create(site(Request), SessionCookie,
+							proplists:get_value(session_cookie_length, Options, stampede_site:config(site(Request), session_cookie_length, 24)), 
+							proplists:get_value(session_timeout_unused, Options, stampede_site:config(site(Request), session_timeout_unused, 300))
+							),
+			% io:format("New session created ~p~n", [NewSession]),
+			{ok, Request#st_request{session = NewSession}};
+		Session ->
+			FinalSession = case proplists:get_value(reset_timeout, Options, true) of
+				true -> 
+					Timeout = proplists:get_value(session_timeout_used, Options, stampede_site:config(site(Request), session_timeout_used, 1200)),
+					st_session:expires(Session, Timeout);
+				false ->
+					Session
+			end,
+			% io:format("Session loaded ~p~n", [FinalSession]),
+			{ok, Request#st_request{session = FinalSession}}
+	end.
+
+
+save_session(Request) when Request#st_request.session == undefined ->
+	% io:format("No session to save...~n"),
+	Request;
+save_session(Request) ->
+	% io:format("Saving session~n"),
+	Request#st_request{session = st_session:save(site(Request), session(Request))}.
+
+
+%% ====================
+%% Tidy up after ourselves
+%% ====================
+
+tidy(Request) ->
+	Request.
 
 
 %% ====================
@@ -133,6 +181,21 @@ keepalive(Request) ->
 if_modified_since(Request) ->
 	Request#st_request.if_modified_since.
 
+session(Request) ->
+	Request#st_request.session.
+
+site(Request) ->
+	Request#st_request.site.
+
+site(Request, SetSite) ->
+	Request#st_request{site = SetSite}.
+
+cookie(Request, Key) ->
+	proplists:get_value(Key, Request#st_request.cookies).
+
+cookie(Request, Key, Default) ->
+	proplists:get_value(Key, Request#st_request.cookies, Default).
+
 %% ===================================================================
 %% Internal functions
 %% ===================================================================
@@ -154,4 +217,16 @@ decode_url_args([Arg | Rest], ArgList) ->
 	end;
 decode_url_args([], ArgList) ->
 	ArgList.
+
+decode_cookies([Cookie | Rest], Cookies) ->
+	case binary:split(Cookie, <<$=>>) of
+		[Key, Value] ->
+			decode_cookies(Rest, [{stutil:trim_str(Key), stutil:trim_str(Value)} | Cookies]);
+		BadVal ->
+			io:format("Skipping badly formatted cookie ~p~n", [BadVal]),
+			decode_cookies(Rest, Cookies)
+	end;
+decode_cookies([], Cookies) ->
+	Cookies.
+
 

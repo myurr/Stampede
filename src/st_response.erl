@@ -2,7 +2,7 @@
 
 % Exported API
 -export([new/1, new/4, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2,
-		output_response/1, last_modified/2]).
+		output_response/1, last_modified/2, request/1]).
 
 
 %% ===================================================================
@@ -31,7 +31,8 @@ new(Request) ->
 new(Request, StatusCode, Headers, Body) ->
 	{ok, Response} = new(Request),
 	{ok, StatusCodeResponse} = status_code(Response, StatusCode),
-	{ok, FinalResponse} = set_headers(StatusCodeResponse, Headers),
+	{ok, HeadersResponse} = set_headers(StatusCodeResponse, Headers),
+	{ok, FinalResponse} = set_session_headers(HeadersResponse, Request),
 	case Body of
 		{file, FileName} -> filename(FinalResponse, FileName);
 		_ -> body(FinalResponse, Body)
@@ -54,6 +55,19 @@ set_headers(Response, []) ->
 
 header(Response, Key, Value) ->
 	{ok, Response#st_response{headers = [{Key, Value} | Response#st_response.headers]}}.
+
+
+%% ====================
+%% Set session cookies
+%% ====================
+
+set_session_headers(Response, Request) ->
+	case st_request:session(Request) of
+		undefined ->
+			{ok, Response};
+		Session ->
+			set_headers(Response, st_session:get_response_headers(Session))
+	end.
 
 
 %% ====================
@@ -159,3 +173,6 @@ connection_header(Response) ->
 			<<"Connection: Keep-Alive", 13, 10,
 				"Keep-Alive: timeout=", (stutil:to_binary(KA))/binary>>
 	end.
+
+request(Response) ->
+	Response#st_response.request.
