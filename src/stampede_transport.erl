@@ -14,7 +14,7 @@
 % State record
 -record(transstate, {rec_state, x_state, parent_pool, server_socket, socket, routing_rules, options,
 						timeout_header, timeout_keepalive, redirect_count, site_definitions, 
-						request}).
+						request, response}).
 
 %% ===================================================================
 %% API functions
@@ -39,6 +39,7 @@ init([ParentPool, ServerSocket, RoutingRules, SiteDefinitions, Options]) ->
 							parent_pool = ParentPool, server_socket = ServerSocket,
 							routing_rules = RoutingRules, options = Options,
 							timeout_header = proplists:get_value(timeout_header, Options, 30000)},
+    process_flag(trap_exit, false),
 	{ok, State, 0}.
 
 
@@ -64,6 +65,11 @@ handle_cast(Request, State) ->
 %% Handle Info
 %% =========================
 
+% Connection closed by the client
+handle_info({tcp_closed, _Socket}, State) ->
+    io:format("Connection closed~n"),
+    {stop, normal, State};
+
 
 % Receive an HTTP header
 handle_info({http, _Sock, {http_header, _, Header, _, Value}}, State) when State#transstate.rec_state == headers ->
@@ -85,6 +91,23 @@ handle_info({http, _Sock, {http_request, Method, {abs_path, Path}, HttpVersion}}
     st_socket:active_once(State#transstate.socket),
     NewState = State#transstate{request = NewRequest, rec_state = headers},
     {noreply, NewState, NewState#transstate.timeout_header};
+
+% New chunk to stream
+handle_info({stream, ChunkData}, State) when State#transstate.rec_state == stream ->
+    io:format("Streaming...~n"),
+    st_socket:send(State#transstate.socket, st_response:encode_chunk(State#transstate.response, ChunkData)),
+    {noreply, State};
+
+% End chunk streaming
+handle_info(stream_end, State) when State#transstate.rec_state == stream ->
+    st_socket:send(State#transstate.socket, st_response:last_chunk(State#transstate.response)),
+    case st_request:keepalive(State#transstate.request) of
+        false ->
+            {stop, normal, state};
+        KeepAlive ->
+            NewState = reset_request(State, true),
+            {noreply, NewState, KeepAlive * 1000}
+    end;
 
 % Initialisation trigger...  create the initial worker pool
 handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocket, parent_pool = Parent} = State) ->
@@ -110,10 +133,6 @@ handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocke
 handle_info(timeout, State) ->
 	{stop, normal, State};
 
-% Connection closed by the client
-handle_info({tcp_closed, _Socket}, State) ->
-	{stop, normal, State};
-
 handle_info(Msg, State) ->
 	io:format("Unexpected info to stampede_transport: ~p, ~p~n", [Msg, State]),
 	{noreply, State}.
@@ -124,6 +143,7 @@ handle_info(Msg, State) ->
 %% =========================
 
 terminate(_Reason, State) ->
+    io:format("Terminating thread...~n"),
 	st_socket:close(State#transstate.socket),
 	ok.
 
@@ -166,6 +186,10 @@ process_request(State) ->
 	    			file:close(Fd)
     		end,
     		case KeepAlive of
+                stream ->
+                    st_request:save_session(st_response:request(Response)),
+                    st_socket:active_once(State#transstate.socket),
+                    {noreply, State#transstate{rec_state = stream, x_state = stream, response = Response}};
     			false ->
                     st_request:save_session(st_response:request(Response)),
     				{stop, normal, State};
@@ -190,5 +214,5 @@ process_request(State) ->
 
 reset_request(State, ResetSocket) ->
 	if ResetSocket == true -> st_socket:active_once(State#transstate.socket); true -> ok end,
-	State#transstate{rec_state = request, x_state = rec, request = undefined, redirect_count = 0}.
+	State#transstate{rec_state = request, x_state = rec, request = undefined, response = undefined, redirect_count = 0}.
 

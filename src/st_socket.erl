@@ -63,6 +63,8 @@ active_once(Socket) when Socket#st_socket.ssl == false ->
 close(Socket) when Socket#st_socket.ssl == false ->
 	gen_tcp:close(Socket#st_socket.sock).
 
+send(Socket, <<>>) ->
+	ok;
 send(Socket, Data) when Socket#st_socket.ssl == false ->
 	gen_tcp:send(Socket#st_socket.sock, Data).
 

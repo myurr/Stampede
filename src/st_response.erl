@@ -1,8 +1,8 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/4, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2,
-		output_response/1, last_modified/2, request/1]).
+-export([new/1, new/4, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
+		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2]).
 
 
 %% ===================================================================
@@ -35,6 +35,7 @@ new(Request, StatusCode, Headers, Body) ->
 	{ok, FinalResponse} = set_session_headers(HeadersResponse, Request),
 	case Body of
 		{file, FileName} -> filename(FinalResponse, FileName);
+		{stream, FirstChunk} -> stream(FinalResponse, FirstChunk);
 		_ -> body(FinalResponse, Body)
 	end.
 
@@ -85,16 +86,9 @@ status_code(Response) ->
 %% Set the body output
 %% ====================
 
-body(Response, Body) when is_binary(Body) ->
-	{ok, Response#st_response{body_type = binary, content = Body}}.
+body(Response, Body) ->
+	{ok, Response#st_response{body_type = binary, content = stutil:to_binary(Body)}}.
 
-
-%% ====================
-%% Set the last modified date
-%% ====================
-
-last_modified(Response, Date) ->
-	{ok, Response#st_response{last_modified = Date}}.
 
 
 %% ====================
@@ -104,6 +98,20 @@ last_modified(Response, Date) ->
 filename(Response, FileName) ->
 	{ok, Response#st_response{body_type = file, content = FileName}}.
 
+
+%% ====================
+%% Streaming output
+%% ====================
+
+stream(Response, Body) ->
+	{ok, Response#st_response{body_type = stream, content = stutil:to_binary(Body)}}.
+
+%% ====================
+%% Set the last modified date
+%% ====================
+
+last_modified(Response, Date) ->
+	{ok, Response#st_response{last_modified = Date}}.
 
 %% ====================
 %% Output the entire body content
@@ -118,6 +126,17 @@ output_response(Response) when Response#st_response.body_type == binary ->
 				(Response#st_response.content)/binary	>>,
 		undefined,
 		st_request:keepalive(Response#st_response.request)};
+
+output_response(Response) when Response#st_response.body_type == stream ->
+	% io:format("Response:~n~p~n~n", [Response]),
+	FirstChunk = encode_chunk(Response, Response#st_response.content),
+	{ok, <<		(output_http_version(Response))/binary, $ ,
+				(stutil:http_status_code(Response#st_response.status_code))/binary,
+				13, 10, 
+				(output_headers(Response))/binary, 13, 10,
+				(FirstChunk)/binary	>>,
+		undefined,
+		stream};
 
 output_response(Response) when Response#st_response.body_type == file ->
 	% io:format("Response:~n~p~n~n", [Response]),
@@ -147,6 +166,12 @@ output_headers(Response) when Response#st_response.body_type == file ->
 		"Last-Modified: ", (stutil:to_binary(httpd_util:rfc1123_date(MTime)))/binary, 13, 10,
 		"Content-Length: ", (stutil:to_binary(FileInfo#file_info.size))/binary, 13, 10>>;
 
+output_headers(Response) when Response#st_response.body_type == stream ->
+	<<(output_headers(Response#st_response.headers, <<>>))/binary,
+		(connection_header(Response))/binary, 13, 10,
+		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
+		"Transfer-Encoding: chunked", 13, 10>>;
+
 output_headers(Response) ->
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
 		(connection_header(Response))/binary, 13, 10,
@@ -162,6 +187,8 @@ output_headers([], Out) ->
 
 content_length(Response) when Response#st_response.body_type == binary ->
 	byte_size(Response#st_response.content);
+content_length(Response) when Response#st_response.body_type == stream ->
+	0;
 content_length(Response) when Response#st_response.body_type == file ->
 	filelib:file_size(Response#st_response.content).
 
@@ -176,3 +203,19 @@ connection_header(Response) ->
 
 request(Response) ->
 	Response#st_response.request.
+
+
+encode_chunk(_Response, undefined) ->
+	<<>>;
+encode_chunk(_Response, <<>>) ->
+	<<>>;
+encode_chunk(_Response, OrigData) ->
+	Data = stutil:to_binary(OrigData),
+	if byte_size(Data) > 0 ->
+		LenStr = iolist_to_binary(integer_to_list(byte_size(Data), 16)),
+		<<LenStr/binary, 13, 10, Data/binary, 13, 10>>;
+	true ->	<<>>
+	end.
+
+last_chunk(_Response, AdditionalHeaders) ->
+	<<$0, 13, 10, (output_headers(AdditionalHeaders, <<>>))/binary, 13, 10>>.

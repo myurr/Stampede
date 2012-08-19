@@ -41,6 +41,7 @@ rule(Rst, [{method, Method, SubRules} | Rules], Request) ->
 
 % Match a host entry
 rule(Rst, [{host, Host, SubRules} | Rules], Request) ->
+	io:format("Compare ~p vs ~p~n", [st_request:hostname(Request), stutil:make_list(Host)]),
 	HostMatch = lists:member(st_request:hostname(Request), stutil:make_list(Host)),
 	if HostMatch == true ->
 		rule(Rst, SubRules, Request);

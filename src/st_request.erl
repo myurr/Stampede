@@ -13,8 +13,8 @@
 -define(DEFAULT_KEEPALIVE, 30).
 
 -record(st_request, {socket = undefined, error = undefined, method, url, full_url, args, http_version = {1, 1},
-						headers = [], content_length = 0, host = undefined, keepalive = false, site = undefined,
-						cookies = [], if_modified_since = undefined, session = undefined,
+						headers = [], content_length = 0, content_read = 0, host = undefined, keepalive = false, 
+						site = undefined, cookies = [], if_modified_since = undefined, session = undefined,
 						prev_requests = []}).
 
 
@@ -165,8 +165,10 @@ host(Request) ->
 	Request#st_request.host.
 
 hostname(Request) ->
-	{Host, _Port} = Request#st_request.host,
-	Host.
+	case Request#st_request.host of
+		{Host, _Port} -> Host;
+		_ -> st_socket:name(Request#st_request.socket)
+	end.
 
 arg(Request, Key) ->
 	proplists:get_value(Key, Request#st_request.args).
