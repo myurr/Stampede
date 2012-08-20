@@ -17,7 +17,7 @@
 						data = [], updated = false}).
 
 
--define(TICK_FREQUENCY, 5).
+-define(TICK_FREQUENCY, 60).
 
 %% ===================================================================
 %% Gen Server callbacks
