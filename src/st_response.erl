@@ -123,7 +123,7 @@ output_response(Response) when Response#st_response.body_type == binary ->
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
 				13, 10, 
 				(output_headers(Response))/binary, 13, 10,
-				(Response#st_response.content)/binary	>>,
+				(Response#st_response.content)/binary>>,
 		undefined,
 		st_request:keepalive(Response#st_response.request)};
 

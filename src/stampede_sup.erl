@@ -30,7 +30,11 @@ start_listener(ChildId, Socket, RoutingRules, SiteDefinitions, Options) ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 1, 10}, []} }.
+	SessionStartCmd = {st_session, start_link, []},
+	SessionChildSpec = {st_session, SessionStartCmd, temporary, brutal_kill, worker, [st_session]},
+	
+	RestartStrategy = {one_for_one, 1000, 10},
+	{ok, {RestartStrategy, [SessionChildSpec]}}.
 
 
 %% ===================================================================

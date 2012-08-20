@@ -67,7 +67,7 @@ handle_cast(Request, State) ->
 
 % Connection closed by the client
 handle_info({tcp_closed, _Socket}, State) ->
-    io:format("Connection closed~n"),
+    % io:format("Connection closed~n"),
     {stop, normal, State};
 
 
@@ -87,6 +87,7 @@ handle_info({http, _Sock, http_eoh}, State) when State#transstate.rec_state == h
 
 % New request started
 handle_info({http, _Sock, {http_request, Method, {abs_path, Path}, HttpVersion}}, State) when State#transstate.rec_state == request ->
+    % io:format("New request started~n"),
 	{ok, NewRequest} = st_request:new(State#transstate.socket, Method, Path, HttpVersion),
     st_socket:active_once(State#transstate.socket),
     NewState = State#transstate{request = NewRequest, rec_state = headers},
@@ -94,7 +95,7 @@ handle_info({http, _Sock, {http_request, Method, {abs_path, Path}, HttpVersion}}
 
 % New chunk to stream
 handle_info({stream, ChunkData}, State) when State#transstate.rec_state == stream ->
-    io:format("Streaming...~n"),
+    % io:format("Streaming...~n"),
     st_socket:send(State#transstate.socket, st_response:encode_chunk(State#transstate.response, ChunkData)),
     {noreply, State};
 
@@ -123,6 +124,7 @@ handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocke
     	{keepalive, true},
     	{delay_send, false},
     	{nodelay, true},
+        {packet, http_bin},
     	{reuseaddr, true}
     ]),
 
@@ -135,7 +137,7 @@ handle_info(timeout, State) ->
 
 handle_info(Msg, State) ->
 	io:format("Unexpected info to stampede_transport: ~p, ~p~n", [Msg, State]),
-	{noreply, State}.
+	{stop, normal, State}.
 
 
 %% =========================
@@ -143,7 +145,6 @@ handle_info(Msg, State) ->
 %% =========================
 
 terminate(_Reason, State) ->
-    io:format("Terminating thread...~n"),
 	st_socket:close(State#transstate.socket),
 	ok.
 
@@ -187,14 +188,14 @@ process_request(State) ->
     		end,
     		case KeepAlive of
                 stream ->
-                    st_request:save_session(st_response:request(Response)),
+                    FinalRequest = st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
                     st_socket:active_once(State#transstate.socket),
-                    {noreply, State#transstate{rec_state = stream, x_state = stream, response = Response}};
+                    {noreply, State#transstate{rec_state = stream, x_state = stream, response = Response, request = FinalRequest}};
     			false ->
                     st_request:save_session(st_response:request(Response)),
     				{stop, normal, State};
     			_ ->
-                    st_request:tidy(st_request:save_session(st_response:request(Response))),
+                    st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
 		    		NewState = reset_request(State, true),
     				{noreply, NewState, KeepAlive * 1000}
     		end;
@@ -213,6 +214,10 @@ process_request(State) ->
     end.
 
 reset_request(State, ResetSocket) ->
-	if ResetSocket == true -> st_socket:active_once(State#transstate.socket); true -> ok end,
+    if ResetSocket ->
+        st_socket:setopts(State#transstate.socket, [{packet, http_bin}, {active, once}]);
+    true ->
+        ok
+    end,
 	State#transstate{rec_state = request, x_state = rec, request = undefined, response = undefined, redirect_count = 0}.
 

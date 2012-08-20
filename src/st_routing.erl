@@ -41,7 +41,7 @@ rule(Rst, [{method, Method, SubRules} | Rules], Request) ->
 
 % Match a host entry
 rule(Rst, [{host, Host, SubRules} | Rules], Request) ->
-	io:format("Compare ~p vs ~p~n", [st_request:hostname(Request), stutil:make_list(Host)]),
+	% io:format("Compare ~p vs ~p~n", [st_request:hostname(Request), stutil:make_list(Host)]),
 	HostMatch = lists:member(st_request:hostname(Request), stutil:make_list(Host)),
 	if HostMatch == true ->
 		rule(Rst, SubRules, Request);
@@ -56,6 +56,30 @@ rule(Rst, [{set_path, Path} | Rules], Request) ->
 % Append to the path
 rule(Rst, [{path, Path} | Rules], Request) ->
 	rule(append_path(Rst, Path), Rules, Request);
+
+% Match the content type
+rule(Rst, [{content_type, MatchType, SubRules} | Rules], Request) ->
+	CT = st_request:content_type(Request),
+	if CT == MatchType ->
+		rule(Rst, SubRules, Request);
+	true ->
+		rule(Rst, Rules, Request)
+	end;
+
+% Process post arguments
+rule(Rst, [{post_args, MaxSize, Options} | Rules], Request) ->
+	AllowSize = stutil:size_to_bytes(MaxSize),
+	ContentLength = st_request:content_length(Request),
+	ContentRead = st_request:content_read(Request),
+	if AllowSize >= ContentLength, ContentRead == 0 ->
+		NewRequest = st_request:process_post_data(Request, proplists:get_value(timeout, Options, 60) * 1000),
+		rule(Rst, Rules, NewRequest);
+	ContentRead > 0 ->
+		{error, bad_request, <<"Posted content is longer than the maximum allowed.">>};
+	true ->
+		rule(Rst, Rules, Request)
+	end;
+
 
 % Match a URL
 rule(Rst, [{url, MatchRule, SubRules} | Rules], Request) ->
@@ -126,7 +150,7 @@ rule(Rst, [{static, Content} | _Rules], Request) ->
 rule(Rst, [{site, SiteName} | _Rules], Request) ->
 	case stampede_site:lookup(Rst#rst.site_definitions, SiteName) of
 		undefined ->
-			{error, site_not_found};
+			{error, site_not_found, <<"Site definition ", (stutil:to_binary(SiteName))/binary, " not found.">>};
 		Site ->
 			Routes = stampede_site:routes(Site),
 			rule(Rst#rst{site = Site, routes = Routes}, Routes, st_request:site(Request, Site))

@@ -43,7 +43,7 @@ create(Name, Routing, Options) ->
 	end,
 	case mnesia:activity(transaction, F) of
 		ok ->
-			st_session:init(SessionTable),
+			st_session:init_table(SessionTable),
 			ok;
 		Err ->
 			Err
