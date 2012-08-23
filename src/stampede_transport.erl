@@ -145,6 +145,7 @@ handle_info(Msg, State) ->
 %% =========================
 
 terminate(_Reason, State) ->
+    % io:format("Closing thread.~n"),
 	st_socket:close(State#transstate.socket),
 	ok.
 

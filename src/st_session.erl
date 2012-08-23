@@ -79,13 +79,14 @@ tidy_session_tables([TableName | Rest]) ->
 	TS = stutil:timestamp(),
 	F = fun() ->
 		qlc:eval(qlc:q(
-			[ {mnesia:delete(TableName, Id, write), Id} 
+			[ Id 
 				|| #st_session{id=Id, expires=Expires} <- mnesia:table(TableName),
 				Expires =< TS
 			]))
 	end,
-	Deleted = mnesia:activity(transaction, F),
-	io:format("Deleted sessions ~p~n", [Deleted]),
+	Delete = mnesia:activity(transaction, F),
+	[ mnesia:async_dirty(fun() -> mnesia:delete(TableName, Id, write) end, [])|| Id <- Delete],
+	io:format("Deleted sessions ~p~nDeleted in ~p second(s).~n", [Delete, stutil:timestamp() - TS]),
 	tidy_session_tables(Rest);
 tidy_session_tables([]) ->
 	ok.

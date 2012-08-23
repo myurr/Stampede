@@ -60,6 +60,8 @@ setopts(Socket, Options) when Socket#st_socket.ssl == false ->
 active_once(Socket) when Socket#st_socket.ssl == false ->
 	inet:setopts(Socket#st_socket.sock, [{active, once}]).
 
+close(#st_socket{sock = undefined}) ->
+	ok;
 close(Socket) when Socket#st_socket.ssl == false ->
 	gen_tcp:close(Socket#st_socket.sock).
 
