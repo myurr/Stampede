@@ -85,17 +85,17 @@ rule(Rst, [{post_args, MaxSize, Options} | Rules], Request) ->
 rule(Rst, [{url, MatchRule, SubRules} | Rules], Request) ->
 	% io:format("Url match: ~p vs ~p = ~p~n", [Rst#rst.url_parts, split_url(MatchRule), 
 												% url_match(Rst#rst.url_parts, split_url(MatchRule))]),
-	case url_match(Rst#rst.url_parts, split_url(MatchRule)) of
-		{match, Url} ->
-			rule(Rst#rst{url_parts = Url}, SubRules, Request);
+	case url_match(Rst#rst.url_parts, split_url(MatchRule), []) of
+		{match, RemainingUrl, UrlArgs} ->
+			rule(Rst#rst{url_parts = RemainingUrl}, SubRules, st_request:url_add_args(Request, UrlArgs));
 		false ->
 			rule(Rst, Rules, Request)
 	end;
 
 % Map a URL to a fixed file
 rule(Rst, [{map_file, MatchRule, ServeFileName, Options} | Rules], Request) ->
-	case url_match(Rst#rst.url_parts, split_url(MatchRule)) of
-		{match, []} ->
+	case url_match(Rst#rst.url_parts, split_url(MatchRule), []) of
+		{match, [], _UrlArgs} ->
 			% if Rst#rst.path == undefined -> io:format("Error: path has not been set.~n"); true -> ok end,
 			FileName = <<(Rst#rst.path)/binary, $/, ServeFileName/binary>>,
 			MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
@@ -135,9 +135,9 @@ rule(Rst, [{static_dir, DefaultFile, Options} | Rules], Request) ->
 	end;
 
 % Browser cache control
-rule(Rst, [{browser_cache_for, undefined} | Rules], Request) ->
+rule(Rst, [{http_expires, undefined} | Rules], Request) ->
 	rule(Rst#rst{browser_cache_for = undefined}, Rules, Request);
-rule(Rst, [{browser_cache_for, Delta} | Rules], Request) ->
+rule(Rst, [{http_expires, Delta} | Rules], Request) ->
 	rule(Rst#rst{browser_cache_for = Delta}, Rules, Request);
 
 % Send some static content
@@ -242,14 +242,22 @@ split_url(<<$/, Url/binary>>) ->
 split_url(Url) ->
 	binary:split(Url, <<$/>>, [global]).
 
-url_match([Path | RestUrl], [Match | RestMatch]) ->
-	if Path == Match -> url_match(RestUrl, RestMatch);
-	true -> false end;
-url_match([], []) ->
-	{match, []};
-url_match(Url, []) ->
-	{match, Url};
-url_match([], _Match) ->
+
+url_match([Path | RestUrl], [Match | RestMatch], UrlArgs) ->
+	case binary:first(Match) of
+		$: when byte_size(Match) > 1 ->
+			url_match(RestUrl, RestMatch, [{binary:part(Match, 1, byte_size(Match) - 1), Path} | UrlArgs]);
+		$* ->
+			url_match(RestUrl, RestMatch, UrlArgs);
+		_ ->
+			if Path == Match -> url_match(RestUrl, RestMatch, UrlArgs);
+			true -> false end
+	end;
+url_match([], [], UrlArgs) ->
+	{match, [], UrlArgs};
+url_match(Url, [], UrlArgs) ->
+	{match, Url, UrlArgs};
+url_match([], _Match, _UrlArgs) ->
 	false.
 
 

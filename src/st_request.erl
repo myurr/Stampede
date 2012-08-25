@@ -5,7 +5,7 @@
 		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1, content_type/1, content_length/1,
 		content_read/1, content_unread/1, content_read/2, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
-		discard_post_data/2]).
+		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3]).
 
 %% ===================================================================
 %% Definitions
@@ -13,7 +13,8 @@
 
 -define(DEFAULT_KEEPALIVE, 30).
 
--record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], http_version = {1, 1},
+-record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], url_args = [],
+						http_version = {1, 1},
 						headers = [], content_length = 0, content_read = 0, content_type = undefined, host = undefined, 
 						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, session = undefined,
 						prev_requests = []}).
@@ -192,6 +193,16 @@ post_arg(Request, Key) ->
 
 post_arg(Request, Key, Default) ->
 	proplists:get_value(Key, Request#st_request.post_args, Default).
+
+url_add_args(Request, ArgsList) ->
+	Request#st_request{url_args = ArgsList ++ Request#st_request.url_args}.
+
+url_arg(Request, Key) ->
+	proplists:get_value(Key, Request#st_request.url_args).
+
+url_arg(Request, Key, Default) ->
+	proplists:get_value(Key, Request#st_request.url_args, Default).
+
 
 keepalive(Request) ->
 	% false.
