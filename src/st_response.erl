@@ -1,8 +1,9 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/4, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
-		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2]).
+-export([new/1, new/4, new/2, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
+		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2, get_header/2, get_header/3,
+		body_type/1, save_to_file/2, calc_etag/1]).
 
 
 %% ===================================================================
@@ -16,6 +17,7 @@
 						content_type = <<"text/html">>, 
 						body_type = binary, content = <<>>, content_length = undefined,
 						last_modified}).
+
 
 %% ===================================================================
 %% API functions
@@ -39,6 +41,31 @@ new(Request, StatusCode, Headers, Body) ->
 		_ -> body(FinalResponse, Body)
 	end.
 
+new(Request, CI) ->
+	Status = st_cache:status_code(CI),
+	if Status == 200; Status == ok ->
+		MatchEtag = st_request:if_none_match(Request),
+		ResponseEtag = st_cache:etag(CI),
+		if MatchEtag == ResponseEtag ->
+			{ok, Response} = new(Request),
+			{ok, StatusCodeResponse} = status_code(Response, not_modified),
+			{ok, FinalResponse} = set_session_headers(StatusCodeResponse, Request),
+			body(FinalResponse, <<>>);
+		true ->
+			BaseHeaders = [{<<"Etag">>, ResponseEtag}],
+			Headers = case st_cache:content_type(CI) of
+				undefined -> BaseHeaders;
+				Type -> [{<<"Content-Type">>, Type} | BaseHeaders]
+			end,
+			{ok, Response} = new(Request),
+			{ok, StatusCodeResponse} = status_code(Response, Status),
+			{ok, HeadersResponse} = set_headers(StatusCodeResponse, Headers),
+			{ok, FinalResponse} = set_session_headers(HeadersResponse, Request),
+			filename(FinalResponse, st_cache:cache_file(CI))
+		end;
+	true ->
+		{error, Status, st_cache:error_detail(CI)}
+	end.
 
 %% ====================
 %% Add a header
@@ -57,12 +84,18 @@ set_headers(Response, []) ->
 header(Response, Key, Value) ->
 	{ok, Response#st_response{headers = [{Key, Value} | Response#st_response.headers]}}.
 
+get_header(Response, Key) ->
+	proplists:get_value(Key, Response#st_response.headers).
+
+get_header(Response, Key, Default) ->
+	proplists:get_value(Key, Response#st_response.headers, Default).
 
 %% ====================
 %% Set session cookies
 %% ====================
 
 set_session_headers(Response, Request) ->
+	% io:format("Setting session: ~p~n", [st_request:session(Request)]),
 	case st_request:session(Request) of
 		undefined ->
 			{ok, Response};
@@ -112,6 +145,48 @@ stream(Response, Body) ->
 
 last_modified(Response, Date) ->
 	{ok, Response#st_response{last_modified = Date}}.
+
+
+%% ====================
+%% Retrieve the body type
+%% ====================
+
+body_type(Response) ->
+	Response#st_response.body_type.
+
+%% ====================
+%% Save the response output to a file
+%% ====================
+
+save_to_file(Response, FileName) when Response#st_response.body_type == binary ->
+	filelib:ensure_dir(FileName),
+	ok = file:write_file(FileName, Response#st_response.content);
+save_to_file(Response, FileName) when Response#st_response.body_type == file ->
+	filelib:ensure_dir(FileName),
+	{ok, _Bytes} = file:copy(Response#st_response.content, FileName),
+	ok;
+save_to_file(Response, _FileName) when Response#st_response.body_type == stream ->
+	{error, bad_body_type}.
+
+%% ====================
+%% Calculate an etag for the response
+%% ====================
+
+calc_etag(Response) when Response#st_response.body_type == binary ->
+	<<$", (base64:encode(crypto:sha(Response#st_response.content)))/binary, $">>;
+calc_etag(Response) when Response#st_response.body_type == file ->
+	Context = crypto:sha_init(),
+	{ok, IODevice} = file:open(Response#st_response.content, [read, binary, raw]),
+	FinalContext = etag_scan_file(IODevice, Context),
+	<<$", (base64:encode(crypto:sha_final(FinalContext)))/binary, $">>.
+
+etag_scan_file(IODevice, Context) ->
+	case file:read(IODevice, 4194304) of
+		{ok, Data} ->
+			etag_scan_file(IODevice, crypto:sha_update(Data));
+		_ ->
+			Context
+	end.
 
 %% ====================
 %% Output the entire body content

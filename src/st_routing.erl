@@ -1,7 +1,7 @@
 -module(st_routing).
 
 % Exported API
--export([route/3]).
+-export([route/3, rule/3]).
 
 %% ===================================================================
 %% Definitions
@@ -111,6 +111,11 @@ rule(Rst, [{map_file, MatchRule, ServeFileName, Options} | Rules], Request) ->
 			rule(Rst, Rules, Request)
 	end;
 
+% Hit the cache
+rule(Rst, [{cache, CacheUrlDef, Options, SubRules} | _Rules], Request) ->
+	CacheUrl = gen_url(CacheUrlDef, Rst, Request, <<>>),
+	st_cache:send_resource(CacheUrl, Request, Rst, SubRules, Options);
+
 % Match a static directory of content
 rule(Rst, [{static_dir, DefaultFile, Options} | Rules], Request) ->
 	BaseDir = Rst#rst.path,
@@ -208,7 +213,7 @@ rule(Rst, [], Request) ->
 
 % Other rule
 rule(Rst, [Rule | _Rules], Request) ->
-	io:format("Unknown rule~n"),
+	io:format("Unknown rule ~p~n", [Rule]),
 	{ok, Response} = st_response:new(Request, 500, [],
 			stutil:to_binary(io_lib:format("<pre>Error unknown rule: ~p~n~n~p~n~n~p</pre>", [Rule, Rst, Request]))
 		),
@@ -303,4 +308,15 @@ call_erlang(CallDetails, Rst, Request) ->
 		{call, ErlFun, Args} ->
 			ErlFun(Request, Rst, Args)
 	end.
+
+
+gen_url([Part | Rest], Rst, Request, UrlAcc) ->
+	case Part of
+		{url_arg, Key} -> gen_url(Rest, Rst, Request, <<UrlAcc/binary, $/, (st_request:url_arg(Request, Key, <<$?>>))/binary>>);
+		{get_arg, Key} -> gen_url(Rest, Rst, Request, <<UrlAcc/binary, $/, (st_request:arg(Request, Key, <<$?>>))/binary>>);
+		{post_arg, Key} -> gen_url(Rest, Rst, Request, <<UrlAcc/binary, $/, (st_request:post_arg(Request, Key, <<$?>>))/binary>>);
+		BinStr when is_binary(BinStr) -> gen_url(Rest, Rst, Request, <<UrlAcc/binary, "/", BinStr/binary>>)
+	end;
+gen_url([], _Rst, _Request, UrlAcc) ->
+	UrlAcc.
 

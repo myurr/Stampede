@@ -1,7 +1,7 @@
 -module(stampede_site).
 
 -export([init/0, create/3, list/0, lookup/2]).
--export([routes/1, session_table/1, config/1, config/2, config/3]).
+-export([routes/1, session_table/1, cache_table/1, cache_dir/1, config/1, config/2, config/3, name_str/1, name/1]).
 
 -record(stampede_site, {id, session_table, cache_sup, cache_table, cache_dir, notify_pids, routing, config}).
 
@@ -44,6 +44,7 @@ create(Name, Routing, Options) ->
 	case mnesia:activity(transaction, F) of
 		ok ->
 			st_session:init_table(SessionTable),
+			st_cache:init_cache(CacheTable, CacheDir),
 			ok;
 		Err ->
 			Err
@@ -84,6 +85,12 @@ routes(Site) ->
 session_table(Site) ->
 	Site#stampede_site.session_table.
 
+cache_table(Site) ->
+	Site#stampede_site.cache_table.
+
+cache_dir(Site) ->
+	Site#stampede_site.cache_dir.
+
 config(Site) ->
 	Site#stampede_site.config.
 
@@ -92,3 +99,9 @@ config(Site, Key) ->
 
 config(Site, Key, Default) ->
 	proplists:get_value(Key, Site#stampede_site.config, Default).
+
+name(Site) ->
+	Site#stampede_site.id.
+
+name_str(Site) ->
+	stutil:to_binary(Site#stampede_site.id).

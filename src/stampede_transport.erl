@@ -16,6 +16,8 @@
 						timeout_header, timeout_keepalive, redirect_count, site_definitions, 
 						request, response}).
 
+-define(CACHE_MAX_WAIT_TIME, 30000).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -135,6 +137,16 @@ handle_info(timeout, #transstate{rec_state = accept, server_socket = ServerSocke
 handle_info(timeout, State) ->
 	{stop, normal, State};
 
+% Received information from the cache
+handle_info({cache_content, CI}, State) ->
+    % io:format("Received cache content: ~p~n", [CI]),
+    case st_response:new(State#transstate.request, CI) of
+        {ok, Response} ->
+            handle_request(State, {send, Response});
+        {error, StatusCode, Detail} ->
+            handle_request(State, {error, StatusCode, Detail})
+    end;
+
 handle_info(Msg, State) ->
 	io:format("Unexpected info to stampede_transport: ~p, ~p~n", [Msg, State]),
 	{stop, normal, State}.
@@ -171,11 +183,31 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 	ok = st_socket:send(State#transstate.socket, Data),
 	{stop, normal, State};
 
+
+
 process_request(State) ->
+    handle_request(State, st_request:execute(State#transstate.request, State#transstate.routing_rules, State#transstate.site_definitions)).
+
+handle_request(State, Output) ->
  %   try
  	case
-    	st_request:execute(State#transstate.request, State#transstate.routing_rules, State#transstate.site_definitions)
+    	Output
     of
+        {cache_hit, SaveRequest, CI} ->
+            % io:format("Receive cache hit ~p~n", [CI]),
+            FinalRequest = st_request:discard_post_data(st_request:save_session(SaveRequest), 30000),
+            st_socket:active_once(State#transstate.socket),
+            SaveState = State#transstate{rec_state = cache_async, request = FinalRequest},
+            case st_response:new(FinalRequest, CI) of
+                {ok, Response} ->
+                    handle_request(SaveState, {send, Response});
+                {error, StatusCode, Detail} ->
+                    handle_request(SaveState, {error, StatusCode, Detail})
+            end;
+        {cache_async, SaveRequest, _Pid} ->
+            FinalRequest = st_request:discard_post_data(st_request:save_session(SaveRequest), 30000),
+            st_socket:active_once(State#transstate.socket),
+            {noreply, State#transstate{rec_state = cache_async, request = FinalRequest}, ?CACHE_MAX_WAIT_TIME};
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
             % io:format("Sending:~n~n~p~n~n", [Data]),

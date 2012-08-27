@@ -5,7 +5,7 @@
 		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1, content_type/1, content_length/1,
 		content_read/1, content_unread/1, content_read/2, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
-		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3]).
+		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3, if_none_match/1]).
 
 %% ===================================================================
 %% Definitions
@@ -16,8 +16,8 @@
 -record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], url_args = [],
 						http_version = {1, 1},
 						headers = [], content_length = 0, content_read = 0, content_type = undefined, host = undefined, 
-						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, session = undefined,
-						prev_requests = []}).
+						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, if_none_match = undefined,
+						session = undefined, prev_requests = []}).
 
 
 %% ===================================================================
@@ -73,6 +73,9 @@ header(Request, 'Connection', Value) ->
 
 header(Request, 'If-Modified-Since', Value) ->
 	{ok, Request#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
+
+header(Request, 'If-None-Match', Value) ->
+	{ok, Request#st_request{if_none_match = Value}};
 
 header(Request, 'Cookie', Value) ->
 	{ok, Request#st_request{cookies = decode_cookies(binary:split(Value, <<$;>>, [global]), Request#st_request.cookies)}};
@@ -211,6 +214,9 @@ keepalive(Request) ->
 if_modified_since(Request) ->
 	Request#st_request.if_modified_since.
 
+if_none_match(Request) ->
+	Request#st_request.if_none_match.
+
 session(Request) ->
 	Request#st_request.session.
 
@@ -278,6 +284,7 @@ decode_url_args([], ArgList) ->
 decode_cookies([Cookie | Rest], Cookies) ->
 	case binary:split(Cookie, <<$=>>) of
 		[Key, Value] ->
+			% io:format("Received cookie ~p = ~p~n", [stutil:trim_str(Key), stutil:trim_str(Value)]),
 			decode_cookies(Rest, [{stutil:trim_str(Key), stutil:trim_str(Value)} | Cookies]);
 		BadVal ->
 			io:format("Skipping badly formatted cookie ~p~n", [BadVal]),
