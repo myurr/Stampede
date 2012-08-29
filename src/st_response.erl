@@ -1,7 +1,8 @@
 -module(st_response).
 
 % Exported API
--export([new/1, new/4, new/2, set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
+-export([new/1, new/4, new/2, new_from_data/2, 
+		set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
 		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2, get_header/2, get_header/3,
 		body_type/1, save_to_file/2, calc_etag/1]).
 
@@ -66,6 +67,12 @@ new(Request, CI) ->
 	true ->
 		{error, Status, st_cache:error_detail(CI)}
 	end.
+
+new_from_data(Request, Data) ->
+	{ok, Response} = new(Request),
+	{ok, StatusCodeResponse} = status_code(Response, ok),
+	{ok, FinalResponse} = set_session_headers(StatusCodeResponse, Request),
+	decode_data(FinalResponse, Request, Data).
 
 %% ====================
 %% Add a header
@@ -294,3 +301,16 @@ encode_chunk(_Response, OrigData) ->
 
 last_chunk(_Response, AdditionalHeaders) ->
 	<<$0, 13, 10, (output_headers(AdditionalHeaders, <<>>))/binary, 13, 10>>.
+
+
+decode_data(Response, Request, Data) ->
+	case erlang:decode_packet(httph_bin, Data, []) of
+		{ok, {http_header, _, Key, _, Value}, Rest} ->
+			{ok, NewResponse} = header(Response, Key, Value),
+			decode_data(NewResponse, Request, Rest);
+		{ok, http_eoh, Rest} ->
+			body(Response, Rest);
+		Unknown ->
+			io:format("Unknown packet: ~p~n", [Unknown]),
+			{error, bad_data}
+	end.

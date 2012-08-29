@@ -189,6 +189,23 @@ rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
 			{send, Response}
 	end;
 
+% Fast CGI request - {fcgi, <<"/www/sites/test/php/test.php">>, [{connect, [{"localhost", 9000}]}]}
+rule(_Rst, [{fcgi, Script, Options} | _Rules], Request) ->
+	FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+	FCGI_Params = st_fcgi:params(FCGI, [
+			{<<"SCRIPT_FILENAME">>, Script},
+			{<<"QUERY_STRING">>, st_request:query_string(Request)},
+			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
+			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
+		]),
+	FCGI_End = st_fcgi:stdin_end(FCGI_Params),
+	case st_fcgi:execute(Request, FCGI_End) of
+		{ok, Response} ->
+			{send, Response};
+		{error, Reason} ->
+			{error, 500, Reason}
+	end;
+
 
 % Out of rules...
 rule(Rst, [], Request) ->
