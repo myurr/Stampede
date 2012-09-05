@@ -1,7 +1,8 @@
 -module(stutil).
 
 -export([init/0, to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
-		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, size_to_bytes/1]).
+		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
+		binary_join/2]).
 
 init() ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
@@ -153,12 +154,21 @@ trim_str(Str) ->
 
 trim_front(<<$ , Str/binary>>) ->
 	trim_front(Str);
+trim_front(<<10, Str/binary>>) ->
+	trim_front(Str);
+trim_front(<<13, Str/binary>>) ->
+	trim_front(Str);
+trim_front(<<9, Str/binary>>) ->
+	trim_front(Str);
 trim_front(Str) ->
 	Str.
 
 trim_rear(Str) ->
 	case binary:last(Str) of
-		<<$ >> -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
+		$  -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
+		10 -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
+		13 -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
+		9 -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
 		_ -> Str
 	end.
 
@@ -249,3 +259,14 @@ http_status_code(510)	-> <<"510 Not Extended">>;
 http_status_code(511)	-> <<"511 Network Authentication Required">>;
 http_status_code(666)	-> <<"666 World Ended">>;
 http_status_code(Err)	-> <<(stutil:to_binary(Err))/binary, " Unknown">>.
+
+
+binary_join(Array, JoinStr) ->
+	binary_join(Array, JoinStr, <<>>).
+
+binary_join([Item | Rest], JoinStr, <<>>) ->
+	binary_join(Rest, JoinStr, Item);
+binary_join([Item | Rest], JoinStr, Acc) ->
+	binary_join(Rest, JoinStr, <<Acc/binary, JoinStr/binary, Item/binary>>);
+binary_join([], _JoinStr, Acc) ->
+	Acc.
