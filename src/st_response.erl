@@ -271,7 +271,7 @@ output_headers(Response) when Response#st_response.body_type == stream ->
 		"Transfer-Encoding: chunked", 13, 10>>;
 
 output_headers(Response) when Response#st_response.body_type == websocket ->
-	<<(output_headers(Response#st_response.headers, <<>>))/binary, 13, 10>>;
+	output_headers(Response#st_response.headers, <<>>);
 
 output_headers(Response) ->
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
