@@ -138,7 +138,6 @@ send_data(WS, Op, Payload) ->
 		byte_size(Payload) >= 126	-> <<1:1, 0:3, OpCode:4, 0:1, 126:7, (byte_size(Payload)):16, Payload/binary>>;
 		true						-> <<1:1, 0:3, OpCode:4, 0:1, 		 (byte_size(Payload)):7, Payload/binary>>
 	end,
-	io:format("Sending ~p bytes:~n~p~n", [byte_size(Encoded), Encoded]),
 	st_socket:send(WS#wsstate.socket, Encoded).
 
 
