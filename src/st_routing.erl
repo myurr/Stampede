@@ -206,6 +206,29 @@ rule(_Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 			{error, 500, Reason}
 	end;
 
+% Websocket upgrade request
+rule(Rst, [{web_socket, AllowOrigin, Options, CallDetails} | Rules], Request) ->
+	Connection = stutil:bstr_to_lower(st_request:get_header(Request, 'Connection', <<"undefined">>)),
+	case Connection of
+		<<"upgrade">> ->
+			% Check the upgrade type
+			Upgrade = stutil:bstr_to_lower(st_request:get_header(Request, 'Upgrade', <<"undefined">>)),
+			if Upgrade == <<"websocket">> ->
+				% Check the origin is authorised
+				Authorised = st_websocket:authorise(st_request:get_header(Request, <<"origin">>, undefined), AllowOrigin),
+				if Authorised ->
+					st_websocket:connect(Request, Options, CallDetails);
+				true ->
+					{error, 403, <<"Invalid Origin">>}
+				end;
+			true ->
+				rule(Rst, Rules, Request)
+			end;
+		_ ->
+			rule(Rst, Rules, Request)
+	end;
+
+
 
 % Out of rules...
 rule(Rst, [], Request) ->

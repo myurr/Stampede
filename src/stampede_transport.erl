@@ -204,10 +204,21 @@ handle_request(State, Output) ->
                 {error, StatusCode, Detail} ->
                     handle_request(SaveState, {error, StatusCode, Detail})
             end;
+
         {cache_async, SaveRequest, _Pid} ->
             FinalRequest = st_request:discard_post_data(st_request:save_session(SaveRequest), 30000),
             st_socket:active_once(State#transstate.socket),
             {noreply, State#transstate{rec_state = cache_async, request = FinalRequest}, ?CACHE_MAX_WAIT_TIME};
+
+        {websocket, Response, WSOpt, WSCall} ->
+			{ok, Data, _AdditionalContent, _KeepAlive} = st_response:output_response(Response),
+            % io:format("Sending:~n~n~p~n~n", [Data]),
+			ok = st_socket:send(State#transstate.socket, Data),
+
+		    FinalRequest = st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
+		    st_websocket:handover(State#transstate.socket, FinalRequest, WSOpt, WSCall),
+    		{stop, normal, State};
+
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
             % io:format("Sending:~n~n~p~n~n", [Data]),
@@ -232,9 +243,14 @@ handle_request(State, Output) ->
 		    		NewState = reset_request(State, true),
     				{noreply, NewState, KeepAlive * 1000}
     		end;
+
+    	stop ->
+    		{stop, normal, State};
+
         {error, StatusCode, Detail} ->
     		Request = st_request:error_request(State#transstate.request, StatusCode, <<"Error">>, Detail),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1});
+
     	error ->
     		Request = st_request:error_request(State#transstate.request, 500, <<"Error">>, <<"Unknown">>),
     		process_request(State#transstate{request = Request, redirect_count = State#transstate.redirect_count + 1})
@@ -253,4 +269,3 @@ reset_request(State, ResetSocket) ->
         ok
     end,
 	State#transstate{rec_state = request, x_state = rec, request = undefined, response = undefined, redirect_count = 0}.
-

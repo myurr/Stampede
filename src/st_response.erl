@@ -2,7 +2,7 @@
 
 % Exported API
 -export([new/1, new/4, new/2, new_from_data/2, 
-		set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2,
+		set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2, websocket/1,
 		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2, get_header/2, get_header/3,
 		body_type/1, save_to_file/2, calc_etag/1]).
 
@@ -147,6 +147,13 @@ stream(Response, Body) ->
 	{ok, Response#st_response{body_type = stream, content = stutil:to_binary(Body)}}.
 
 %% ====================
+%% Set up a web socket
+%% ====================
+
+websocket(Response) ->
+	{ok, Response#st_response{body_type = websocket, content = <<>>}}.
+
+%% ====================
 %% Set the last modified date
 %% ====================
 
@@ -220,6 +227,15 @@ output_response(Response) when Response#st_response.body_type == stream ->
 		undefined,
 		stream};
 
+output_response(Response) when Response#st_response.body_type == websocket ->
+	% io:format("Response:~n~p~n~n", [Response]),
+	{ok, <<		(output_http_version(Response))/binary, $ ,
+				(stutil:http_status_code(Response#st_response.status_code))/binary,
+				13, 10, 
+				(output_headers(Response))/binary, 13, 10>>,
+		undefined,
+		websocket};
+
 output_response(Response) when Response#st_response.body_type == file ->
 	% io:format("Response:~n~p~n~n", [Response]),
 	{ok, Fd} = file:open(Response#st_response.content, [read, raw, binary]),
@@ -253,6 +269,9 @@ output_headers(Response) when Response#st_response.body_type == stream ->
 		(connection_header(Response))/binary, 13, 10,
 		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
 		"Transfer-Encoding: chunked", 13, 10>>;
+
+output_headers(Response) when Response#st_response.body_type == websocket ->
+	<<(output_headers(Response#st_response.headers, <<>>))/binary, 13, 10>>;
 
 output_headers(Response) ->
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,

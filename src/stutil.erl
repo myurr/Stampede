@@ -2,7 +2,7 @@
 
 -export([init/0, to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
-		binary_join/2]).
+		binary_join/2, http_status_number/1]).
 
 init() ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
@@ -186,6 +186,16 @@ size_to_bytes({Size, gb}) ->
 %% ====================
 %% HTTP Status codes
 %% ====================
+
+http_status_number(ok)				-> 200;
+http_status_number(found)			-> 302;
+http_status_number(not_modified)	-> 304;
+http_status_number(bad_request)		-> 400;
+http_status_number(unauthorized)	-> 401;
+http_status_number(forbidden)		-> 403;
+http_status_number(not_found)		-> 404;
+http_status_number(error)			-> 500;
+http_status_number(Number)			-> Number.
 
 http_status_code(ok)			-> <<"200 OK">>;
 http_status_code(found)			-> <<"302 Found">>;
