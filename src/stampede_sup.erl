@@ -33,8 +33,11 @@ init([]) ->
 	SessionStartCmd = {st_session, start_link, []},
 	SessionChildSpec = {st_session, SessionStartCmd, temporary, brutal_kill, worker, [st_session]},
 	
+	MQStartCmd = {st_mq, start_link, []},
+	MQChildSpec = {st_mq, MQStartCmd, temporary, brutal_kill, worker, [st_mq]},
+	
 	RestartStrategy = {one_for_one, 1000, 10},
-	{ok, {RestartStrategy, [SessionChildSpec]}}.
+	{ok, {RestartStrategy, [SessionChildSpec, MQChildSpec]}}.
 
 
 %% ===================================================================

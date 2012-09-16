@@ -77,6 +77,10 @@ handover(Socket, Request, Options, CallDetails) ->
 			OrigWS
 	end,
 
+	% Auto subscribe to a list of st_mq channels
+	STMQChannels = proplists:get_value(stmq_subscribe, Options, []),
+	[ st_mq:subscribe(Chan) || Chan <- STMQChannels ],
+
 	% Enter the main loop
 	main_loop(WS).
 
@@ -111,6 +115,18 @@ main_loop(WS) ->
 			io:format("WebSocket has closed.~n"),
 			terminate(WS, normal);
 
+		{st_mq, Msg} ->
+			case proplists:get_value(stmq_format, WS#wsstate.options) of
+				raw ->
+					send_data(WS, text, st_mq:msg_data(Msg));
+				jquery ->
+					JSON = {struct, [
+						{<<"type">>, <<"message">>},
+						{<<"data">>, st_mq:msg_data(Msg)}
+					]},
+					send_data(WS, text, stutil:to_binary(json:encode(JSON)))
+			end;
+
 		Msg ->
 			io:format("~n>>> Unexpected message in websocket main loop: ~p~n~n", [Msg]),
 			main_loop(WS)
@@ -126,6 +142,7 @@ terminate(WS, Reason) ->
 	exit(Reason).
 
 send_data(WS, Op, Payload) ->
+	io:format("Websocket sending data: ~p~n", [Payload]),
 	OpCode = case Op of
 		text -> 1;
 		binary -> 2;

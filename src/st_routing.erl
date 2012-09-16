@@ -219,6 +219,7 @@ rule(Rst, [{web_socket, AllowOrigin, Options, CallDetails} | Rules], Request) ->
 				if Authorised ->
 					st_websocket:connect(Request, Options, CallDetails);
 				true ->
+					io:format("Websocket invalid origin: ~p~n", [st_request:get_header(Request, <<"origin">>, undefined)]),
 					{error, 403, <<"Invalid Origin">>}
 				end;
 			true ->
