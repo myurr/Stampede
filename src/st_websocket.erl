@@ -125,7 +125,8 @@ main_loop(WS) ->
 						{<<"data">>, st_mq:msg_data(Msg)}
 					]},
 					send_data(WS, text, stutil:to_binary(json:encode(JSON)))
-			end;
+			end,
+			main_loop(WS);
 
 		Msg ->
 			io:format("~n>>> Unexpected message in websocket main loop: ~p~n~n", [Msg]),
