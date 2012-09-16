@@ -95,10 +95,10 @@ main_loop(WS) ->
 					catch
 						Err:Details ->
 							io:format("Error in websocket process: ~p:~p~n~p~n~n", [Err, Details, erlang:get_stacktrace()]),
-							terminate(WS, normal)
+							terminate(WS)
 					end;
 				stop ->
-					terminate(WS, normal);
+					terminate(WS);
 				Other ->
 					io:format("Unexpected return value from receive_data: ~p~n~n", [Other])
 			end;
@@ -109,11 +109,11 @@ main_loop(WS) ->
 
 		stop ->
 			send_data(WS, close, <<>>),
-			terminate(WS, normal);
+			terminate(WS);
 
 		{tcp_closed, _Port} ->
 			io:format("WebSocket has closed.~n"),
-			terminate(WS, normal);
+			terminate(WS);
 
 		{st_mq, Msg} ->
 			case proplists:get_value(stmq_format, WS#wsstate.options) of
@@ -133,14 +133,13 @@ main_loop(WS) ->
 			main_loop(WS)
 	after
 		Timeout ->
-			terminate(WS, normal)
+			terminate(WS)
 	end.
 
-terminate(WS, Reason) ->
+terminate(WS) ->
 	if WS#wsstate.stream_pid == undefined -> ok;
-	true -> io:format("Killing process ~p~n", [WS#wsstate.stream_pid]), exit(WS#wsstate.stream_pid, kill) end,
-	io:format("Killing process ~p~n", [self()]), 
-	exit(Reason).
+	true -> exit(WS#wsstate.stream_pid, kill) end,
+	stop.
 
 send_data(WS, Op, Payload) ->
 	io:format("Websocket sending data: ~p~n", [Payload]),
