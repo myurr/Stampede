@@ -1,6 +1,7 @@
 -module(stutil).
 
--export([init/0, to_binary/1, to_integer/1, timestamp/0, bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
+-export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0,
+		bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
 		binary_join/2, http_status_number/1]).
 
@@ -35,6 +36,14 @@ timestamp() ->
 	{MegaSeconds, Seconds, _MS} = now(),
 	(MegaSeconds * 1000000) + Seconds.
 
+timestamp_ms() ->
+	{MegaSeconds, Seconds, MicroSeconds} = now(),
+	((MegaSeconds * 1000000 * 1000000) + (Seconds * 1000000) + MicroSeconds) div 1000.
+
+timestamp_micro() ->
+	{MegaSeconds, Seconds, MicroSeconds} = now(),
+	(MegaSeconds * 1000000 * 1000000) + (Seconds * 1000000) + MicroSeconds.
+
 
 to_binary(Input) when is_binary(Input) ->
 	Input;
@@ -55,6 +64,14 @@ to_integer(Input) when is_list(Input) ->
 	list_to_integer(Input);
 to_integer(Input) when is_atom(Input) ->
 	list_to_integer(atom_to_list(Input)).
+
+
+to_float(Input) when is_float(Input) ->
+	Input;
+to_float(Input) when is_binary(Input) ->
+	list_to_float(binary_to_list(Input));
+to_float(Input) when is_list(Input) ->
+	list_to_float(Input).
 
 
 bstr_to_upper(Str) ->
