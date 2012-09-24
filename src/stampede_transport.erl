@@ -210,6 +210,14 @@ handle_request(State, Output) ->
             st_socket:active_once(State#transstate.socket),
             {noreply, State#transstate{rec_state = cache_async, request = FinalRequest}, ?CACHE_MAX_WAIT_TIME};
 
+        {handover, Response, CallBack, Arg} ->
+			{ok, Data, _AdditionalContent, _KeepAlive} = st_response:output_response(Response),
+			ok = st_socket:send(State#transstate.socket, Data),
+
+		    FinalRequest = st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
+		    CallBack(State#transstate.socket, FinalRequest, Arg),
+    		{stop, normal, State};        
+
         {websocket, Response, WSOpt, WSCall} ->
 			{ok, Data, _AdditionalContent, _KeepAlive} = st_response:output_response(Response),
             % io:format("Sending:~n~n~p~n~n", [Data]),

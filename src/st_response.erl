@@ -3,8 +3,8 @@
 % Exported API
 -export([new/1, new/4, new/2, new_from_data/2, 
 		set_headers/2, header/3, status_code/1, status_code/2, body/2, filename/2, stream/2, websocket/1,
-		output_response/1, last_modified/2, request/1, encode_chunk/2, last_chunk/2, get_header/2, get_header/3,
-		body_type/1, save_to_file/2, calc_etag/1]).
+		output_response/1, last_modified/2, request/1, encode_chunk/1, last_chunk/1, get_header/2, get_header/3,
+		body_type/1, save_to_file/2, calc_etag/1, content_type/2]).
 
 
 %% ===================================================================
@@ -15,7 +15,7 @@
 
 -record(st_response, {request = undefined, send_state = buffer,
 						status_code = 200, headers = [],
-						content_type = <<"text/html">>, 
+						content_type = undefined, 
 						body_type = binary, content = <<>>, content_length = undefined,
 						last_modified}).
 
@@ -96,6 +96,15 @@ get_header(Response, Key) ->
 
 get_header(Response, Key, Default) ->
 	proplists:get_value(Key, Response#st_response.headers, Default).
+
+
+
+%% ====================
+%% Content type
+%% ====================
+
+content_type(Response, ContentType) ->
+	Response#st_response{content_type = ContentType}.
 
 %% ====================
 %% Set session cookies
@@ -218,7 +227,7 @@ output_response(Response) when Response#st_response.body_type == binary ->
 
 output_response(Response) when Response#st_response.body_type == stream ->
 	% io:format("Response:~n~p~n~n", [Response]),
-	FirstChunk = encode_chunk(Response, Response#st_response.content),
+	FirstChunk = encode_chunk(Response#st_response.content),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
 				13, 10, 
@@ -258,15 +267,21 @@ output_headers(Response) when Response#st_response.body_type == file ->
 	{ok, FileInfo} = file:read_file_info(Response#st_response.content),
 	MTime = FileInfo#file_info.mtime,
 	% io:format("Last modified: ~p~n", [MTime]),
+	ContentType = if Response#st_response.content_type == undefined -> <<>>;
+		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
 		(connection_header(Response))/binary, 13, 10,
+		ContentType/binary,
 		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
 		"Last-Modified: ", (stutil:to_binary(httpd_util:rfc1123_date(MTime)))/binary, 13, 10,
 		"Content-Length: ", (stutil:to_binary(FileInfo#file_info.size))/binary, 13, 10>>;
 
 output_headers(Response) when Response#st_response.body_type == stream ->
+	ContentType = if Response#st_response.content_type == undefined -> <<>>;
+		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
 		(connection_header(Response))/binary, 13, 10,
+		ContentType/binary,
 		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
 		"Transfer-Encoding: chunked", 13, 10>>;
 
@@ -274,8 +289,11 @@ output_headers(Response) when Response#st_response.body_type == websocket ->
 	output_headers(Response#st_response.headers, <<>>);
 
 output_headers(Response) ->
+	ContentType = if Response#st_response.content_type == undefined -> <<>>;
+		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
 		(connection_header(Response))/binary, 13, 10,
+		ContentType/binary,
 		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
 		"Content-Length: ", (stutil:to_binary(content_length(Response)))/binary, 13, 10>>.
 
@@ -306,11 +324,11 @@ request(Response) ->
 	Response#st_response.request.
 
 
-encode_chunk(_Response, undefined) ->
+encode_chunk(undefined) ->
 	<<>>;
-encode_chunk(_Response, <<>>) ->
+encode_chunk(<<>>) ->
 	<<>>;
-encode_chunk(_Response, OrigData) ->
+encode_chunk(OrigData) ->
 	Data = stutil:to_binary(OrigData),
 	if byte_size(Data) > 0 ->
 		LenStr = iolist_to_binary(integer_to_list(byte_size(Data), 16)),
@@ -318,7 +336,7 @@ encode_chunk(_Response, OrigData) ->
 	true ->	<<>>
 	end.
 
-last_chunk(_Response, AdditionalHeaders) ->
+last_chunk(AdditionalHeaders) ->
 	<<$0, 13, 10, (output_headers(AdditionalHeaders, <<>>))/binary, 13, 10>>.
 
 

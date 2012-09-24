@@ -3,7 +3,7 @@
 -export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0,
 		bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
-		binary_join/2, http_status_number/1]).
+		binary_join/2, http_status_number/1, split_lines/1]).
 
 init() ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
@@ -192,7 +192,7 @@ trim_rear(Str) ->
 size_to_bytes({Size, b}) ->
 	Size;
 size_to_bytes({Size, kb}) ->
-	Size;
+	Size * 1024;
 size_to_bytes({Size, mb}) ->
 	Size * 1024 * 1024;
 size_to_bytes({Size, gb}) ->
@@ -297,3 +297,19 @@ binary_join([Item | Rest], JoinStr, Acc) ->
 	binary_join(Rest, JoinStr, <<Acc/binary, JoinStr/binary, Item/binary>>);
 binary_join([], _JoinStr, Acc) ->
 	Acc.
+
+split_lines(Text) ->
+	split_lines(Text, [], <<>>).
+
+split_lines(<<13, 10, Rest/binary>>, Lines, Acc) ->
+	split_lines(Rest, [Acc | Lines], <<>>);
+split_lines(<<13, Rest/binary>>, Lines, Acc) ->
+	split_lines(Rest, [Acc | Lines], <<>>);
+split_lines(<<10, Rest/binary>>, Lines, Acc) ->
+	split_lines(Rest, [Acc | Lines], <<>>);
+split_lines(<<Chr, Rest/binary>>, Lines, Acc) ->
+	split_lines(Rest, Lines, <<Acc/binary, Chr>>);
+split_lines(<<>>, Lines, <<>>) ->
+	lists:reverse(Lines);
+split_lines(<<>>, Lines, Acc) ->
+	lists:reverse([Acc | Lines]).

@@ -206,8 +206,60 @@ rule(_Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 			{error, 500, Reason}
 	end;
 
+rule(_Rst, [{jquery_socket, AllowOrigin, Options, CallBacks} | _Rules], Request) ->
+	case st_request:method(Request) of
+		'GET' ->
+			SocketId = st_request:arg(Request, <<"id">>),
+			if SocketId == undefined ->
+				{error, 400, <<"A socket id must be supplied when connecting a jquery socket.">>};
+			true ->
+				case st_request:arg(Request, <<"transport">>) of
+					<<"ws">> ->
+						Connection = stutil:bstr_to_lower(st_request:get_header(Request, 'Connection', <<"undefined">>)),
+						case Connection of
+							<<"upgrade">> ->
+								% Check the upgrade type
+								Upgrade = stutil:bstr_to_lower(st_request:get_header(Request, 'Upgrade', <<"undefined">>)),
+								if Upgrade == <<"websocket">> ->
+									st_jqs:new_websocket(SocketId, Request, Options, CallBacks, AllowOrigin);
+								true ->
+									{error, 400, <<"Invalid upgrade request">>}
+								end;
+							_ ->
+								{error, 400, <<"Invalid upgrade request for a web socket">>}
+						end;
+
+					<<"streamxdr">> ->
+						st_jqs:new_stream(streamxdr, SocketId, Request, Options, CallBacks, AllowOrigin);
+
+					<<"streamxhr">> ->
+						st_jqs:new_stream(streamxhr, SocketId, Request, Options, CallBacks, AllowOrigin);
+
+					Other ->
+						io:format("Unknown transport type ~p~n", [Other]),
+						{error, 400, <<"Unknown transport type.">>}
+				end
+			end;
+
+		'POST' ->
+			AllowSize = stutil:size_to_bytes(proplists:get_value(max_post_data, Options, {64, kb})),
+			Timeout = proplists:get_value(timeout, Options, 60) * 1000,
+			ContentLength = st_request:content_length(Request),
+			ContentRead = st_request:content_read(Request),
+			if AllowSize >= ContentLength, ContentRead == 0 ->
+				NewRequest = st_request:process_post_data(Request, Timeout),
+				st_jqs:stream_post(NewRequest);
+			true ->
+				{error, 400, <<"Post data too long.">>}
+			end;
+
+		Other ->
+			io:format("Invalid jquery socket request method of ~p~n", [Other]),
+			{error, 400, <<"Invalid request method.">>}
+	end;
+
 % Websocket upgrade request
-rule(Rst, [{web_socket, AllowOrigin, Options, CallDetails} | Rules], Request) ->
+rule(Rst, [{web_socket, AllowOrigin, Options, CallBacks} | Rules], Request) ->
 	Connection = stutil:bstr_to_lower(st_request:get_header(Request, 'Connection', <<"undefined">>)),
 	case Connection of
 		<<"upgrade">> ->
@@ -217,7 +269,7 @@ rule(Rst, [{web_socket, AllowOrigin, Options, CallDetails} | Rules], Request) ->
 				% Check the origin is authorised
 				Authorised = st_websocket:authorise(st_request:get_header(Request, <<"origin">>, undefined), AllowOrigin),
 				if Authorised ->
-					st_websocket:connect(Request, Options, CallDetails);
+					st_websocket:connect(Request, Options, CallBacks);
 				true ->
 					io:format("Websocket invalid origin: ~p~n", [st_request:get_header(Request, <<"origin">>, undefined)]),
 					{error, 403, <<"Invalid Origin">>}

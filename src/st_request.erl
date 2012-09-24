@@ -3,7 +3,7 @@
 % Exported API
 -export([new/4, terminate/1, header/3, end_headers/1, execute/3, error_request/4,
 		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1, content_type/1, content_length/1,
-		content_read/1, content_unread/1, content_read/2, post_arg/2, post_arg/3, process_post_data/2,
+		content_read/1, content_unread/1, content_read/2, post_data/1, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
 		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3, if_none_match/1, query_string/1,
 		get_header/2, get_header/3
@@ -16,7 +16,7 @@
 -define(DEFAULT_KEEPALIVE, 30).
 
 -record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], url_args = [],
-						http_version = {1, 1},
+						http_version = {1, 1}, raw_post_data = <<>>,
 						headers = [], content_length = 0, content_read = 0, content_type = undefined, host = undefined, 
 						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, if_none_match = undefined,
 						session = undefined, prev_requests = []}).
@@ -195,6 +195,9 @@ arg(Request, Key) ->
 arg(Request, Key, Default) ->
 	proplists:get_value(Key, Request#st_request.args, Default).
 
+post_data(Request) ->
+	Request#st_request.raw_post_data.
+
 post_arg(Request, Key) ->
 	proplists:get_value(Key, Request#st_request.post_args).
 
@@ -269,7 +272,12 @@ process_post_data(Request, Timeout) when Request#st_request.content_type == <<"a
 	Len = content_unread(Request),
 	{ok, Data} = st_socket:recv(Request#st_request.socket, Len, Timeout),
 	PostArgs = decode_url_args(binary:split(Data, <<$&>>, [global]), []),
-	Request#st_request{post_args = PostArgs, content_read = Request#st_request.content_read + Len}.
+	Request#st_request{post_args = PostArgs, raw_post_data = Data, content_read = Request#st_request.content_read + Len};
+
+process_post_data(Request, Timeout) ->
+	Len = content_unread(Request),
+	{ok, Data} = st_socket:recv(Request#st_request.socket, Len, Timeout),
+	Request#st_request{raw_post_data = Data, content_read = Request#st_request.content_read + Len}.
 
 
 %% ===================================================================

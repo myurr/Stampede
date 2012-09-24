@@ -12,6 +12,7 @@
 start(_StartType, _StartArgs) ->
 	application:start(mnesia),
 	stutil:init(),
+	st_jqs:init(),
     stampede_sup:start_link().
 
 stop(_State) ->

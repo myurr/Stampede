@@ -213,7 +213,6 @@ timeout(State) ->
 		true -> 0 end.
 
 send_message_to_pids(Msg, [Pid | Pids]) ->
-	io:format("Sending message to ~p~n", [Pid]),
 	Pid ! Msg,
 	send_message_to_pids(Msg, Pids);
 send_message_to_pids(_Msg, []) ->

@@ -1,15 +1,15 @@
 -module(st_websocket).
 
 % Exported API
--export([authorise/2, connect/3, init_socket/1, handover/4, send_data/3, bootstrap_child/3]).
+-export([authorise/2, connect/3, init_socket/1, handover/4, send_data/3, send_message/2, bootstrap_child/3, get/2, get/3, set/3]).
 
 
 %% ===================================================================
 %% Definitions
 %% ===================================================================
 
--record(wsstate, {socket, request, options, stream_pid = undefined, call_details, data_buf = <<>>, payload_buf = <<>>, payload_op = 0, 
-					timeout, parent_pid}).
+-record(wsstate, {socket, request, options, stream_pid = undefined, call_backs, data_buf = <<>>, payload_buf = <<>>, payload_op = 0, 
+					timeout, parent_pid, data = []}).
 
 %% ===================================================================
 %% API functions
@@ -31,7 +31,7 @@ authorise(Origin, AllowOrigins) ->
 %% Connect a web socket
 %% ====================
 
-connect(Request, Options, CallDetails) ->
+connect(Request, Options, CallBacks) ->
 	SecResponse = sec_response(st_request:get_header(Request, <<"sec-websocket-key">>, <<>>)),
 	{ok, Response} = st_response:new(Request),
 	{ok, WSResponse} = st_response:websocket(Response),
@@ -39,7 +39,7 @@ connect(Request, Options, CallDetails) ->
 	{ok, FinalResponse} = st_response:set_headers(StatusCodeResponse,
 			[{<<"Sec-WebSocket-Accept">>, SecResponse}, {<<"Upgrade">>, <<"websocket">>}, {<<"Connection">>, <<"Upgrade">>},
 			{<<"Sec-WebSocket-Version">>, <<"13">>}]),
-	{websocket, FinalResponse, Options, CallDetails}.
+	{websocket, FinalResponse, Options, CallBacks}.
 
 %% ====================
 %% Initialise the socket
@@ -62,11 +62,12 @@ sec_response(SecKey) ->
 %% Take control of the process
 %% ===================================================================
 
-handover(Socket, Request, Options, CallDetails) ->
+handover(Socket, Request, Options, CallBacks) ->
 	init_socket(Socket),
 
-	OrigWS = #wsstate{parent_pid = self(), socket = Socket, request = Request, options = Options, call_details = CallDetails,
-						timeout = proplists:get_value(timeout, Options, infinity)},
+	OrigWS = #wsstate{parent_pid = self(), socket = Socket, request = Request, options = Options, call_backs = CallBacks,
+						timeout = proplists:get_value(timeout, Options, infinity),
+						data = [ Val || {Opt, Val} <- Options, Opt == set ]},
 
 	% Set up the streaming process
 	WS = case proplists:get_value(stream, Options) of
@@ -81,8 +82,17 @@ handover(Socket, Request, Options, CallDetails) ->
 	STMQChannels = proplists:get_value(stmq_subscribe, Options, []),
 	[ st_mq:subscribe(Chan) || Chan <- STMQChannels ],
 
-	% Enter the main loop
-	main_loop(WS).
+	% Call initialisation code
+	case proplists:get_value(init, CallBacks) of
+		undefined ->
+			WS;
+		Fun when is_function(Fun, 1) ->
+			case Fun(WS) of
+				ok -> main_loop(WS);
+				{ok, NewWS} -> main_loop(NewWS);
+				close -> terminate(WS)
+			end
+	end.
 
 main_loop(WS) ->
 	Timeout = WS#wsstate.timeout,
@@ -116,16 +126,7 @@ main_loop(WS) ->
 			terminate(WS);
 
 		{st_mq, Msg} ->
-			case proplists:get_value(stmq_format, WS#wsstate.options) of
-				raw ->
-					send_data(WS, text, st_mq:msg_data(Msg));
-				jquery ->
-					JSON = {struct, [
-						{<<"type">>, <<"message">>},
-						{<<"data">>, st_mq:msg_data(Msg)}
-					]},
-					send_data(WS, text, stutil:to_binary(json:encode(JSON)))
-			end,
+			send_message(WS, st_mq:msg_data(Msg)),
 			main_loop(WS);
 
 		Msg ->
@@ -142,7 +143,6 @@ terminate(WS) ->
 	stop.
 
 send_data(WS, Op, Payload) ->
-	io:format("Websocket sending data: ~p~n", [Payload]),
 	OpCode = case Op of
 		text -> 1;
 		binary -> 2;
@@ -156,6 +156,18 @@ send_data(WS, Op, Payload) ->
 		true						-> <<1:1, 0:3, OpCode:4, 0:1, 		 (byte_size(Payload)):7, Payload/binary>>
 	end,
 	st_socket:send(WS#wsstate.socket, Encoded).
+
+send_message(WS, Msg) ->
+	case proplists:get_value(stmq_format, WS#wsstate.options) of
+		raw ->
+			send_data(WS, text, st_mq:msg_data(Msg));
+		jquery ->
+			JSON = {struct, [
+				{<<"type">>, <<"message">>},
+				{<<"data">>, Msg}
+			]},
+			send_data(WS, text, stutil:to_binary(json:encode(JSON)))
+	end.
 
 
 receive_data(WS, NewData) ->
@@ -222,18 +234,45 @@ process_frame(WS, Fin, OpCode, Payload) ->
 		process_data_buffer(NewWS)
 	end.
 
-process_message(WS) ->
-	{call, Fun} = WS#wsstate.call_details,
-	case Fun(WS, WS#wsstate.payload_buf) of
-		ok ->
-			process_data_buffer(WS);
-		{ok, NewWS} ->
-			process_data_buffer(NewWS);
-		stop ->
-			stop
+process_message(OrigWS) ->
+	Payload = OrigWS#wsstate.payload_buf,
+	WS = OrigWS#wsstate{payload_buf = <<>>},
+
+	case proplists:get_value(rx, WS#wsstate.call_backs) of
+		Fun when is_function(Fun) ->
+			case Fun(WS, Payload) of
+				ok ->
+					process_data_buffer(WS);
+				{ok, NewWS} ->
+					process_data_buffer(NewWS);
+				stop ->
+					stop
+			end;
+		undefined ->
+			process_data_buffer(WS)
 	end.
 
 bootstrap_child(Module, Function, WS) ->
 	process_flag(trap_exit, false),
 	apply(Module, Function, [WS]).
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+set(WS, Key, Val) ->
+	WS#wsstate{data = set_key(Key, Val, WS#wsstate.data, [])}.
+
+set_key(Key, Val, [{Key, _V} | Rest], Acc) ->
+	[{Key, Val} | Acc] ++ Rest;
+set_key(Key, Val, [KVP | Rest], Acc) ->
+	set_key(Key, Val, Rest, [KVP | Acc]);
+set_key(Key, Val, [], Acc) ->
+	[{Key, Val} | Acc].
+
+
+get(WS, Key) ->
+	proplists:get_value(Key, WS#wsstate.data).
+	
+get(WS, Key, Default) ->
+	proplists:get_value(Key, WS#wsstate.data, Default).
+	
