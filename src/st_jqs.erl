@@ -179,13 +179,11 @@ send(Jqs, Msg) ->
 			st_websocket:send_data(Jqs#jqs.ws, text, stutil:to_binary(json:encode(JSON)));
 		streamxdr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10>>,
-			io:format("JQS Sending: ~p~n", [Data]),
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
 		streamxhr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10>>,
-			io:format("JQS Sending: ~p~n", [Data]),
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data))
 	end.
 
