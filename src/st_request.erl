@@ -64,14 +64,7 @@ header(Request, 'Content-Type', Value) ->
 	{ok, Request#st_request{content_type = Value}};
 
 header(Request, 'Connection', Value) ->
-	case stutil:bstr_to_lower(Value) of
-		<<"keep-alive">> ->
-			{ok, Request#st_request{keepalive = ?DEFAULT_KEEPALIVE}};
-		<<"close">> ->
-			{ok, Request#st_request{keepalive = false}};
-		_ ->
-			{ok, Request#st_request{headers = [{'Connection', Value} | Request#st_request.headers]}}
-	end;
+	header_connection(Request, [ stutil:trim_str(stutil:bstr_to_lower(C)) || C <- binary:split(Value, <<",">>, [global]) ]);
 
 header(Request, 'If-Modified-Since', Value) ->
 	{ok, Request#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
@@ -86,6 +79,20 @@ header(Request, Key, Value) when is_atom(Key) ->
 	{ok, Request#st_request{headers = [{Key, Value} | Request#st_request.headers]}};
 header(Request, Key, Value) ->
 	{ok, Request#st_request{headers = [{stutil:bstr_to_lower(Key), Value} | Request#st_request.headers]}}.
+
+
+header_connection(Request, [Value | Rest]) ->
+	case Value of
+		<<"keep-alive">> ->
+			header_connection(Request#st_request{keepalive = ?DEFAULT_KEEPALIVE}, Rest);
+		<<"close">> ->
+			header_connection(Request#st_request{keepalive = false}, Rest);
+		_ ->
+			header_connection(Request#st_request{headers = [{'Connection', Value} | Request#st_request.headers]}, Rest)
+	end;
+header_connection(Request, []) ->
+	{ok, Request}.
+
 
 %% ====================
 %% End of the headers
