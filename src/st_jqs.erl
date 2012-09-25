@@ -163,7 +163,7 @@ stream_connect(Jqs) ->
 				_ -> 4096
 			end
 	end,
-	{ok, NewResponse} = st_response:new(Jqs#jqs.request, 200, Headers, {stream, <<(binary:copy(<<" ">>, 4096))/binary, 13, 10>>}),
+	{ok, NewResponse} = st_response:new(Jqs#jqs.request, 200, Headers, {stream, <<(binary:copy(<<" ">>, 4096))/binary, 10>>}),
 	Response = st_response:content_type(NewResponse, <<"text/plain">>),
 	{handover, Response, fun st_jqs:stream_handover/3, Jqs#jqs{padding = Padding}}.
 
@@ -179,12 +179,12 @@ send(Jqs, Msg) ->
 			st_websocket:send_data(Jqs#jqs.ws, text, stutil:to_binary(json:encode(JSON)));
 		streamxdr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10>>,
 			io:format("JQS Sending: ~p~n", [Data]),
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
 		streamxhr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10>>,
 			io:format("JQS Sending: ~p~n", [Data]),
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data))
 	end.
