@@ -13,7 +13,7 @@
 
 -record(jqs_state, {}).
 
--record(jqs, {type, socket_id, response, sock, state, call_backs, options, request, ws, data = []}).
+-record(jqs, {type, socket_id, response, sock, state, call_backs, options, request, ws, data = [], padding = 0}).
 
 -record(jqs_socket, {id, pid}).
 
@@ -151,9 +151,21 @@ stream_connect(Jqs) ->
 	true ->
 		[ {<<"Access-Control-Allow-Origin">>, st_request:get_header(Jqs#jqs.request, <<"origin">>, <<"*">>)} ]
 	end,
+	Padding = case st_request:user_agent(Jqs#jqs.request) of
+		undefined -> 4096;
+		UA ->
+			case binary:matches(UA, <<"Android 2.">>) of
+				[] ->
+					case binary:matches(UA, <<"Android 3.">>) of
+						[] -> 0;
+						_ -> 4096
+					end;
+				_ -> 4096
+			end
+	end,
 	{ok, NewResponse} = st_response:new(Jqs#jqs.request, 200, Headers, {stream, <<(binary:copy(<<" ">>, 4096))/binary, 13, 10>>}),
 	Response = st_response:content_type(NewResponse, <<"text/plain">>),
-	{handover, Response, fun st_jqs:stream_handover/3, Jqs}.
+	{handover, Response, fun st_jqs:stream_handover/3, Jqs#jqs{padding = Padding}}.
 
 
 
@@ -167,11 +179,13 @@ send(Jqs, Msg) ->
 			st_websocket:send_data(Jqs#jqs.ws, text, stutil:to_binary(json:encode(JSON)));
 		streamxdr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, 4096))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			io:format("JQS Sending: ~p~n", [Data]),
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
 		streamxhr ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
-			Data = <<(binary:copy(<<" ">>, 4096))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<13, 10>>))/binary, 13, 10>>,
+			io:format("JQS Sending: ~p~n", [Data]),
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data))
 	end.
 

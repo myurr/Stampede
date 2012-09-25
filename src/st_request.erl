@@ -16,7 +16,7 @@
 -define(DEFAULT_KEEPALIVE, 30).
 
 -record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], url_args = [],
-						http_version = {1, 1}, raw_post_data = <<>>,
+						http_version = {1, 1}, raw_post_data = <<>>, ua = undefined,
 						headers = [], content_length = 0, content_read = 0, content_type = undefined, host = undefined, 
 						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, if_none_match = undefined,
 						session = undefined, prev_requests = []}).
@@ -78,6 +78,9 @@ header(Request, 'If-Modified-Since', Value) ->
 
 header(Request, 'If-None-Match', Value) ->
 	{ok, Request#st_request{if_none_match = Value}};
+
+header(Request, 'User-Agent', Value) ->
+	{ok, Request#st_request{ua = Value}};
 
 header(Request, 'Cookie', Value) ->
 	{ok, Request#st_request{cookies = decode_cookies(binary:split(Value, <<$;>>, [global]), Request#st_request.cookies)}};
@@ -256,6 +259,9 @@ content_unread(Request) ->
 
 query_string(Request) ->
 	Request#st_request.full_url.
+
+user_agent(Request) ->
+	Request#st_request.ua.
 
 get_header(Request, Key) ->
 	proplists:get_value(Key, Request#st_request.headers).
