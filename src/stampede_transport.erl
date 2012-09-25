@@ -186,6 +186,7 @@ process_request(State) when State#transstate.redirect_count >= ?MAX_INTERNAL_RED
 
 
 process_request(State) ->
+	io:format("Request: ~p~n", [State#transstate.request]),
     handle_request(State, st_request:execute(State#transstate.request, State#transstate.routing_rules, State#transstate.site_definitions)).
 
 handle_request(State, Output) ->
@@ -212,6 +213,7 @@ handle_request(State, Output) ->
 
         {handover, Response, CallBack, Arg} ->
 			{ok, Data, _AdditionalContent, _KeepAlive} = st_response:output_response(Response),
+            io:format("Sending:~n~n~p~n~n", [Data]),
 			ok = st_socket:send(State#transstate.socket, Data),
 
 		    FinalRequest = st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
@@ -220,7 +222,7 @@ handle_request(State, Output) ->
 
         {websocket, Response, WSOpt, WSCall} ->
 			{ok, Data, _AdditionalContent, _KeepAlive} = st_response:output_response(Response),
-            % io:format("Sending:~n~n~p~n~n", [Data]),
+            io:format("Sending:~n~n~p~n~n", [Data]),
 			ok = st_socket:send(State#transstate.socket, Data),
 
 		    FinalRequest = st_request:discard_post_data(st_request:save_session(st_response:request(Response)), 30000),
