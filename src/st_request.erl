@@ -6,7 +6,7 @@
 		content_read/1, content_unread/1, content_read/2, post_data/1, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
 		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3, if_none_match/1, query_string/1,
-		get_header/2, get_header/3
+		get_header/2, get_header/3, user_agent/1
 		]).
 
 %% ===================================================================
