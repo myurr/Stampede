@@ -219,8 +219,8 @@ output_response(Response) when Response#st_response.body_type == binary ->
 	% io:format("Response:~n~p~n~n", [Response]),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
-				13, 10, 
-				(output_headers(Response))/binary, 13, 10,
+				10, 
+				(output_headers(Response))/binary, 10,
 				(Response#st_response.content)/binary>>,
 		undefined,
 		st_request:keepalive(Response#st_response.request)};
@@ -230,8 +230,8 @@ output_response(Response) when Response#st_response.body_type == stream ->
 	FirstChunk = encode_chunk(Response#st_response.content),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
-				13, 10, 
-				(output_headers(Response))/binary, 13, 10,
+				10, 
+				(output_headers(Response))/binary, 10,
 				(FirstChunk)/binary	>>,
 		undefined,
 		stream};
@@ -240,8 +240,8 @@ output_response(Response) when Response#st_response.body_type == websocket ->
 	% io:format("Response:~n~p~n~n", [Response]),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
-				13, 10, 
-				(output_headers(Response))/binary, 13, 10>>,
+				10, 
+				(output_headers(Response))/binary, 10>>,
 		undefined,
 		websocket};
 
@@ -250,8 +250,8 @@ output_response(Response) when Response#st_response.body_type == file ->
 	{ok, Fd} = file:open(Response#st_response.content, [read, raw, binary]),
 	{ok, <<		(output_http_version(Response))/binary, $ ,
 				(stutil:http_status_code(Response#st_response.status_code))/binary,
-				13, 10, 
-				(output_headers(Response))/binary, 13, 10>>,
+				10, 
+				(output_headers(Response))/binary, 10>>,
 		{file, Fd},
 		st_request:keepalive(Response#st_response.request)}.
 
@@ -270,20 +270,20 @@ output_headers(Response) when Response#st_response.body_type == file ->
 	ContentType = if Response#st_response.content_type == undefined -> <<>>;
 		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
-		(connection_header(Response))/binary, 13, 10,
+		(connection_header(Response))/binary, 10,
 		ContentType/binary,
-		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
-		"Last-Modified: ", (stutil:to_binary(httpd_util:rfc1123_date(MTime)))/binary, 13, 10,
-		"Content-Length: ", (stutil:to_binary(FileInfo#file_info.size))/binary, 13, 10>>;
+		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 10,
+		"Last-Modified: ", (stutil:to_binary(httpd_util:rfc1123_date(MTime)))/binary, 10,
+		"Content-Length: ", (stutil:to_binary(FileInfo#file_info.size))/binary, 10>>;
 
 output_headers(Response) when Response#st_response.body_type == stream ->
 	ContentType = if Response#st_response.content_type == undefined -> <<>>;
 		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
-		(connection_header(Response))/binary, 13, 10,
+		(connection_header(Response))/binary, 10,
 		ContentType/binary,
-		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
-		"Transfer-Encoding: chunked", 13, 10>>;
+		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 10,
+		"Transfer-Encoding: chunked", 10>>;
 
 output_headers(Response) when Response#st_response.body_type == websocket ->
 	output_headers(Response#st_response.headers, <<>>);
@@ -292,15 +292,15 @@ output_headers(Response) ->
 	ContentType = if Response#st_response.content_type == undefined -> <<>>;
 		true -> <<"Content-type: ", (stutil:to_binary(Response#st_response.content_type))/binary>> end,
 	<<(output_headers(Response#st_response.headers, <<>>))/binary,
-		(connection_header(Response))/binary, 13, 10,
+		(connection_header(Response))/binary, 10,
 		ContentType/binary,
-		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 13, 10,
-		"Content-Length: ", (stutil:to_binary(content_length(Response)))/binary, 13, 10>>.
+		"Date: ", (stutil:to_binary(httpd_util:rfc1123_date()))/binary, 10,
+		"Content-Length: ", (stutil:to_binary(content_length(Response)))/binary, 10>>.
 
 
 output_headers([{Key, Value} | Rest], Out) ->
 	output_headers(Rest,
-		<<Out/binary, (stutil:to_binary(Key))/binary, $:, $ , (stutil:to_binary(Value))/binary, 13, 10>>);
+		<<Out/binary, (stutil:to_binary(Key))/binary, $:, $ , (stutil:to_binary(Value))/binary, 10>>);
 output_headers([], Out) ->
 	Out.
 
@@ -316,7 +316,7 @@ connection_header(Response) ->
 		false ->
 			<<"Connection: close">>;
 		KA ->
-			<<"Connection: Keep-Alive", 13, 10,
+			<<"Connection: Keep-Alive", 10,
 				"Keep-Alive: timeout=", (stutil:to_binary(KA))/binary>>
 	end.
 
@@ -332,12 +332,12 @@ encode_chunk(OrigData) ->
 	Data = stutil:to_binary(OrigData),
 	if byte_size(Data) > 0 ->
 		LenStr = iolist_to_binary(integer_to_list(byte_size(Data), 16)),
-		<<LenStr/binary, 13, 10, Data/binary, 13, 10>>;
+		<<LenStr/binary, 10, Data/binary, 10>>;
 	true ->	<<>>
 	end.
 
 last_chunk(AdditionalHeaders) ->
-	<<$0, 13, 10, (output_headers(AdditionalHeaders, <<>>))/binary, 13, 10>>.
+	<<$0, 10, (output_headers(AdditionalHeaders, <<>>))/binary, 10>>.
 
 
 decode_data(Response, Request, Data) ->
