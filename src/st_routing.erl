@@ -229,6 +229,12 @@ rule(_Rst, [{jquery_socket, AllowOrigin, Options, CallBacks} | _Rules], Request)
 								{error, 400, <<"Invalid upgrade request for a web socket">>}
 						end;
 
+					<<"sse">> ->
+						st_jqs:new_stream(sse, SocketId, Request, Options, CallBacks, AllowOrigin);
+
+					<<"streamiframe">> ->
+						st_jqs:new_stream(streamiframe, SocketId, Request, Options, CallBacks, AllowOrigin);
+
 					<<"streamxdr">> ->
 						st_jqs:new_stream(streamxdr, SocketId, Request, Options, CallBacks, AllowOrigin);
 

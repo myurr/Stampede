@@ -136,6 +136,10 @@ new_stream(Type, SocketId, Request, Options, CallBacks, AllowOrigin) ->
 	end.
 
 
+stream_authorise(sse, _Origin, _Allow) ->
+	true;
+stream_authorise(streamiframe, _Origin, _Allow) ->
+	true;
 stream_authorise(streamxhr, _Origin, _Allow) ->
 	true;
 stream_authorise(_Type, _Origin, all) ->
@@ -146,7 +150,7 @@ stream_authorise(_Type, Origin, AllowOrigin) ->
 	lists:member(Origin, AllowOrigin).
 
 stream_connect(Jqs) ->
-	Headers = if Jqs#jqs.type == streamxhr ->
+	Headers = if Jqs#jqs.type == streamxhr; Jqs#jqs.type == sse; Jqs#jqs.type == streamiframe ->
 		[];
 	true ->
 		[ {<<"Access-Control-Allow-Origin">>, st_request:get_header(Jqs#jqs.request, <<"origin">>, <<"*">>)} ]
@@ -164,7 +168,7 @@ stream_connect(Jqs) ->
 			end
 	end,
 	{ok, NewResponse} = st_response:new(Jqs#jqs.request, 200, Headers, {stream, <<(binary:copy(<<" ">>, 4096))/binary, 10>>}),
-	Response = st_response:content_type(NewResponse, <<"text/plain">>),
+	Response = st_response:content_type(NewResponse, if Jqs#jqs.type == sse -> <<"text/event-stream">>; true -> <<"text/plain">> end),
 	{handover, Response, fun st_jqs:stream_handover/3, Jqs#jqs{padding = Padding}}.
 
 
@@ -182,6 +186,14 @@ send(Jqs, Msg) ->
 			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
 		streamxhr ->
+			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
+			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
+		sse ->
+			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
+			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
+			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data));
+		streamiframe ->
 			DataLines = [ <<"data: ", L/binary>> || L <- stutil:split_lines(stutil:to_binary(json:encode(JSON))) ],
 			Data = <<(binary:copy(<<" ">>, Jqs#jqs.padding))/binary, (stutil:binary_join(DataLines, <<10>>))/binary, 10, 10>>,
 			st_socket:send(Jqs#jqs.sock, st_response:encode_chunk(Data))
