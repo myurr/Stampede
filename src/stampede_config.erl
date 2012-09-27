@@ -65,10 +65,15 @@ handle_info(timeout, State) ->
 	],
 
 	EcRoutes = [
+		{url, <<"/ws">>, [
+			{jquery_socket, all, [{stmq_subscribe, [test]}, {stmq_msg, auto_forward}], [
+				{init, fun tweet_http:jq_tweet_init/1},
+				{rx, fun tweet_http:jq_tweet_receive/2}
+			]}
+		]},
+
 		{method, 'GET', [
-			{path, <<"colin/web">>},
-			{static_dir, <<"index.html">>, [{exclude_extensions, [<<".php">>]}]},
-			{fcgi, <<"/var/www/ecademy2/colin/web/app_dev.php">>, [{connect, [{"localhost", 9000}]}]}
+			{symfony_root, <<"colin/web">>, [{connect, [{"localhost", 9000}]}, {default_path, <<"app_dev.php">>}]}
 		]}
 	],
 

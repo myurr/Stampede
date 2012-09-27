@@ -189,16 +189,57 @@ rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
 			{send, Response}
 	end;
 
+rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
+	Rst = set_path(OrigRst, Path),
+	BaseDir = Rst#rst.path,
+	DefaultFile = proplists:get_value(default_path, Options, <<"app.php">>),
+	
+	FileName = case Rst#rst.url_parts of
+		[] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
+		[<<>>] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
+		Parts ->
+			Joined = combine_url_path(Parts, BaseDir),
+			case filelib:is_regular(Joined) of
+				true -> Joined;
+				false -> <<BaseDir/binary, $/, DefaultFile/binary>>
+			end
+	end,
+
+	ExecExtension = proplists:get_value(exec_extension, Options, <<".php">>),
+
+	case filename:extension(FileName) of
+		ExecExtension ->
+			FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+			FCGI_Params = fcgi_params(FCGI, Rst, FileName, Request, Options),
+			FCGI_End = st_fcgi:stdin_end(FCGI_Params),
+			case st_fcgi:execute(Request, FCGI_End) of
+				{ok, Response} ->
+					{send, Response};
+				{error, Reason} ->
+					{error, 500, Reason}
+			end;
+		_ ->
+			case serve_static_file(FileName, Options) of
+				true ->
+					MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
+					case file_modified(FileName, Request) of
+						true ->
+							{ok, Response} = st_response:new(Request, ok, [{<<"Content-Type">>, MimeType}], {file, FileName}),
+							{send, finalise_response(Response, Rst, Request)};
+						false ->
+							{ok, Response} = st_response:new(Request, not_modified, [{<<"Content-Type">>, MimeType}], <<>>),
+							{send, finalise_response(Response, Rst, Request)}
+					end;
+				false ->
+					rule(Rst, Rules, Request)
+			end
+	end;
+
+
 % Fast CGI request - {fcgi, <<"/www/sites/test/php/test.php">>, [{connect, [{"localhost", 9000}]}]}
-rule(_Rst, [{fcgi, Script, Options} | _Rules], Request) ->
+rule(Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 	FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-	FCGI_Params = st_fcgi:params(FCGI, [
-			{<<"SCRIPT_FILENAME">>, Script},
-			{<<"QUERY_STRING">>, st_request:query_string(Request)},
-			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
-			{<<"REQUEST_URI">>, stutil:to_binary(st_request:request_uri(Request))},
-			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
-		]),
+	FCGI_Params = fcgi_params(FCGI, Rst, Script, Request, Options),
 	FCGI_End = st_fcgi:stdin_end(FCGI_Params),
 	case st_fcgi:execute(Request, FCGI_End) of
 		{ok, Response} ->
@@ -327,6 +368,17 @@ rule(_Rst, Rules, _Request) ->
 %% ===================================================================
 %% Support functions
 %% ===================================================================
+
+
+fcgi_params(FCGI, _Rst, Script, Request, _Options) ->
+	st_fcgi:params(FCGI, [
+			{<<"SCRIPT_FILENAME">>, Script},
+			{<<"QUERY_STRING">>, st_request:query_string(Request)},
+			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
+			{<<"REQUEST_URI">>, stutil:to_binary(st_request:request_uri(Request))},
+			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
+		]).
+
 
 serve_static_file(FileName, Options) ->
 	case filelib:is_regular(FileName) of
