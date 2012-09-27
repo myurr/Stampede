@@ -67,7 +67,8 @@ handle_info(timeout, State) ->
 	EcRoutes = [
 		{method, 'GET', [
 			{path, <<"colin/web">>},
-			{static_dir, <<"index.html">>, []}
+			{fcgi, <<"/var/www/ecademy2/colin/web/app_dev.php">>, [{connect, [{"localhost", 9000}]}]}
+%			{static_dir, <<"index.html">>, []}
 		]}
 	],
 
