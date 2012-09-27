@@ -124,7 +124,7 @@ rule(Rst, [{static_dir, DefaultFile, Options} | Rules], Request) ->
 		[<<>>] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
 		Parts -> combine_url_path(Parts, BaseDir)
 	end,
-	case filelib:is_regular(FileName) of
+	case serve_static_file(FileName, Options) of
 		true ->
 			MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
 			case file_modified(FileName, Request) of
@@ -326,6 +326,18 @@ rule(_Rst, Rules, _Request) ->
 %% ===================================================================
 %% Support functions
 %% ===================================================================
+
+serve_static_file(FileName, Options) ->
+	case filelib:is_regular(FileName) of
+		true ->
+			case lists:member(filename:extension(FileName), proplists:get_value(exclude_extensions, Options, [])) of
+				true -> false;
+				_ -> true
+			end;
+		false ->
+			false
+	end.
+
 
 set_path(Rst, OrigPath) ->
 	Path = case binary:last(OrigPath) of
