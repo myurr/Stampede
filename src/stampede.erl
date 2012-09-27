@@ -40,5 +40,19 @@ nodes(_NodeList) ->
 %% ===================================================================
 
 bootstrap() ->
-	io:format("Booting stampede...~n"),
+	SiteRoutes = [
+		{set_path, <<"/var/www/ecademy2/">>},
+		{site, ecademy}
+	],
+
+	EcRoutes = [
+		{method, 'GET', [
+			{path, <<"colin/web">>},
+			{static_dir, <<"index.html">>, []}
+		]}
+	],
+
+	stampede:nodes([]),
+	ok = stampede_site:create(ecademy, EcRoutes, []),
+	stampede:listen([{port, 8000}], SiteRoutes, stampede_site:list(), [{idle_workers, 20}]).
 	ok.
