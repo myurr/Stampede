@@ -8,7 +8,8 @@
 %% ===================================================================
 
 start() ->
-	ok = application:start(stampede).
+	ok = application:start(stampede),
+	ok = bootstrap().
 
 
 %% ===================================================================
@@ -34,4 +35,10 @@ nodes(_NodeList) ->
 	ok.
 
 
+%% ===================================================================
+%% Bootstrap stampede as a stand alone server
+%% ===================================================================
 
+bootstrap() ->
+	io:format("Booting stampede...~n"),
+	ok.
