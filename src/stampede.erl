@@ -54,5 +54,5 @@ bootstrap() ->
 
 	stampede:nodes([]),
 	ok = stampede_site:create(ecademy, EcRoutes, []),
-	stampede:listen([{port, 8000}], SiteRoutes, stampede_site:list(), [{idle_workers, 20}]).
+	stampede:listen([{port, 8000}], SiteRoutes, stampede_site:list(), [{idle_workers, 20}]),
 	ok.
