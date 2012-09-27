@@ -4,7 +4,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, start_listener/5]).
+-export([start_link/0, start_listener/5, start_config/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -24,6 +24,12 @@ start_listener(ChildId, Socket, RoutingRules, SiteDefinitions, Options) ->
 	ChildSpec = {ChildId, ChildCmd, permanent, ?SHUTDOWN_TIME, supervisor, [stampede_listener]},
 	io:format("Starting child...~n"),
 	supervisor:start_child(?MODULE, ChildSpec).
+
+start_config(ConfigFile, Options) ->
+	ChildCmd = {stampede_config, start_link, [ConfigFile, Options]},
+	ChildSpec = {stampede_config, ChildCmd, permanent, brutal_kill, worker, [stampede_config]},
+	supervisor:start_child(?MODULE, ChildSpec).
+
 
 %% ===================================================================
 %% Supervisor callbacks
