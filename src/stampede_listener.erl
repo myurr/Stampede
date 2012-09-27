@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 % API
--export([start_link/4, connection_accepted/1]).
+-export([start_link/5, connection_accepted/1]).
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -11,14 +11,14 @@
 % State record
 -record(state, {server_socket = undefined, routing_rules = [], worker_count = 0, 
 					max_workers = infinity, min_workers = 1, worker_options = [],
-					site_definitions = []}).
+					site_definitions = [], handler_module}).
 
 %% ===================================================================
 %% API functions
 %% ===================================================================
 
-start_link(ServerSocket, RoutingRules, SiteDefinitions, Options) ->
-	gen_server:start_link(?MODULE, [ServerSocket, RoutingRules, SiteDefinitions, Options], []).
+start_link(ServerSocket, RoutingRules, SiteDefinitions, HandlerModule, Options) ->
+	gen_server:start_link(?MODULE, [ServerSocket, RoutingRules, SiteDefinitions, HandlerModule, Options], []).
 
 connection_accepted(ParentPid) ->
 	gen_server:cast(ParentPid, connection_accepted).
@@ -33,13 +33,14 @@ connection_accepted(ParentPid) ->
 %% Initialisation
 %% =========================
 
-init([ServerSocket, RoutingRules, SiteDefinitions, Options]) ->
+init([ServerSocket, RoutingRules, SiteDefinitions, HandlerModule, Options]) ->
 	io:format("Connection ~s initialised.~n", [st_socket:name(ServerSocket)]),
 	State = #state{server_socket = ServerSocket, routing_rules = RoutingRules, worker_count = 0,
 					site_definitions = SiteDefinitions,
 					worker_options = proplists:get_value(workers, Options, []),
 					max_workers = proplists:get_value(max_connections, Options, infinity),
-					min_workers = proplists:get_value(idle_workers, Options, 10)},
+					min_workers = proplists:get_value(idle_workers, Options, 10),
+					handler_module = HandlerModule},
 
 	% We want to receive a message when a child exits, so we can reduce the worker count
 	process_flag(trap_exit, true),
@@ -116,7 +117,8 @@ start_children(State, _) ->
 	State.
 
 start_child(State) ->
-	stampede_transport:start_link(self(), State#state.server_socket, State#state.routing_rules,
+	Module = State#state.handler_module,
+	Module:start_link(self(), State#state.server_socket, State#state.routing_rules,
 											State#state.site_definitions, State#state.worker_options),
 	State#state{worker_count = State#state.worker_count + 1}.
 

@@ -75,6 +75,7 @@ handle_info(timeout, State) ->
 	stampede:nodes([]),
 	ok = stampede_site:create(ecademy, EcRoutes, []),
 	stampede:listen([{port, 8000}], SiteRoutes, stampede_site:list(), [{idle_workers, 20}]),
+	stampede:cmd_listen([{port, 8001}], stampede_site:list(), []),
 	{noreply, State};
 
 % Unknown signal

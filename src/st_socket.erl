@@ -3,7 +3,7 @@
 %% API
 -export([listen/1, port/1, name/1, accept/1, setopts/2, active_once/1, close/1, send/2, send_file/2, recv/3]).
 
--record(st_socket, {sock = undefined, port = 0, ssl = false, type = undefined, options = [], name = <<"undefined">>}).
+-record(st_socket, {sock = undefined, port = 0, ssl = false, type = undefined, base_packet = raw, options = [], name = <<"undefined">>}).
 
 %% ===================================================================
 %% API
@@ -16,10 +16,11 @@ listen(SocketDet) ->
 	do_listen(Ssl, IP, Port, SocketDet).
 
 do_listen(false, IP, Port, SocketDet) ->
+	BasePacket = case proplists:get_value(data, SocketDet, undefined) of true -> raw; _ -> http_bin end,
 	SockOpts = [
 		binary,
 		{active, false},
-		{packet, http_bin},
+		{packet, BasePacket},
 		{reuseaddr, true},
 		{packet_size, 16384},
 		{recbuf, 16384},
@@ -33,7 +34,7 @@ do_listen(false, IP, Port, SocketDet) ->
 
 	case gen_tcp:listen(Port, FinalSockOpts) of
 		{ok, LSock} ->
-			{ok, #st_socket{sock = LSock, port = Port, ssl = false, type = server, options = SocketDet, name = Name}};
+			{ok, #st_socket{sock = LSock, port = Port, ssl = false, type = server, options = SocketDet, name = Name, base_packet = BasePacket}};
 		Err ->
 			Err
 	end.
@@ -76,6 +77,6 @@ send_file(Socket, Fd) when Socket#st_socket.ssl == false ->
 recv(Socket, Len, Timeout) when Socket#st_socket.ssl == false ->
 	inet:setopts(Socket#st_socket.sock, [{packet, raw}]),
 	Ret = gen_tcp:recv(Socket#st_socket.sock, Len, Timeout),
-	inet:setopts(Socket#st_socket.sock, [{packet, http_bin}]),
+	inet:setopts(Socket#st_socket.sock, [{packet, Socket#st_socket.base_packet}]),
 	Ret.
 
