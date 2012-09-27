@@ -304,7 +304,7 @@ process_post_data(Request, Timeout) ->
 decode_url(Path) ->
 	case binary:split(Path, <<$?>>) of
 		[Url] ->
-			{ok, Url, []};
+			{ok, Url, <<"">>, []};
 		[Url, Args] ->
 			{ok, Url, Args, decode_url_args(binary:split(Args, <<$&>>, [global]), [])}
 	end.
