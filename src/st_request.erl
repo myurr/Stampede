@@ -6,7 +6,7 @@
 		content_read/1, content_unread/1, content_read/2, post_data/1, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
 		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3, if_none_match/1, query_string/1,
-		get_header/2, get_header/3, user_agent/1
+		get_header/2, get_header/3, user_agent/1, request_uri/1
 		]).
 
 %% ===================================================================
@@ -15,7 +15,7 @@
 
 -define(DEFAULT_KEEPALIVE, 30).
 
--record(st_request, {socket = undefined, error = undefined, method, url, full_url, args = [], post_args = [], url_args = [],
+-record(st_request, {socket = undefined, error = undefined, method, url, query_string, request_uri, args = [], post_args = [], url_args = [],
 						http_version = {1, 1}, raw_post_data = <<>>, ua = undefined,
 						headers = [], content_length = 0, content_read = 0, content_type = undefined, host = undefined, 
 						keepalive = false, site = undefined, cookies = [], if_modified_since = undefined, if_none_match = undefined,
@@ -31,9 +31,10 @@
 %% ====================
 
 new(Socket, Method, Path, Version) ->
-	{ok, Url, Args} = decode_url(Path),
+	{ok, Url, QueryString, Args} = decode_url(Path),
 	% io:format("Method ~p, URL ~p, Args ~p, Version ~p~n", [Method, Url, Args, Version]),
-	{ok, #st_request{socket = Socket, method = Method, url = Url, full_url = Path, args = Args, http_version = Version,
+	{ok, #st_request{socket = Socket, method = Method, url = Url, query_string = QueryString, request_uri = Path,
+					 args = Args, http_version = Version,
 					keepalive = if Version == {1,1} -> ?DEFAULT_KEEPALIVE; true -> false end}}.
 
 
@@ -265,7 +266,10 @@ content_unread(Request) ->
 	Request#st_request.content_length - Request#st_request.content_read.
 
 query_string(Request) ->
-	Request#st_request.full_url.
+	Request#st_request.query_string.
+
+request_uri(Request) ->
+	Request#st_request.request_uri.
 
 user_agent(Request) ->
 	Request#st_request.ua.
@@ -302,7 +306,7 @@ decode_url(Path) ->
 		[Url] ->
 			{ok, Url, []};
 		[Url, Args] ->
-			{ok, Url, decode_url_args(binary:split(Args, <<$&>>, [global]), [])}
+			{ok, Url, Args, decode_url_args(binary:split(Args, <<$&>>, [global]), [])}
 	end.
 
 decode_url_args([Arg | Rest], ArgList) ->

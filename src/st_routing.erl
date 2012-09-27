@@ -196,6 +196,7 @@ rule(_Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 			{<<"SCRIPT_FILENAME">>, Script},
 			{<<"QUERY_STRING">>, st_request:query_string(Request)},
 			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
+			{<<"REQUEST_URI">>, stutil:to_binary(st_request:request_uri(Request))},
 			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
 		]),
 	FCGI_End = st_fcgi:stdin_end(FCGI_Params),
