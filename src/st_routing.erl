@@ -190,35 +190,39 @@ rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
 	end;
 
 rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
-	Rst = set_path(OrigRst, Path),
+	Rst = append_path(OrigRst, Path),
 	BaseDir = Rst#rst.path,
 	DefaultFile = proplists:get_value(default_path, Options, <<"app.php">>),
 	
-	FileName = case Rst#rst.url_parts of
-		[] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
-		[<<>>] -> <<BaseDir/binary, $/, DefaultFile/binary>>;
-		Parts ->
-			Joined = combine_url_path(Parts, BaseDir),
-			case filelib:is_regular(Joined) of
-				true -> Joined;
-				false -> <<BaseDir/binary, $/, DefaultFile/binary>>
-			end
+	FileParts = case Rst#rst.url_parts of
+		[] -> [DefaultFile];
+		[<<>>] -> [DefaultFile];
+		Parts -> Parts
 	end,
 
 	ExecExtension = proplists:get_value(exec_extension, Options, <<".php">>),
 
-	case filename:extension(FileName) of
-		ExecExtension ->
-			FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-			FCGI_Params = fcgi_params(FCGI, Rst, FileName, Request, Options),
-			FCGI_End = st_fcgi:stdin_end(FCGI_Params),
-			case st_fcgi:execute(Request, FCGI_End) of
-				{ok, Response} ->
-					{send, Response};
-				{error, Reason} ->
-					{error, 500, Reason}
+	case path_contains(FileParts, ExecExtension, []) of
+		{match, ScriptParts, RestParts} ->
+			ScriptPath = combine_url_path(ScriptParts, BaseDir),
+			RestPath = combine_url_path(RestParts, <<>>),
+			io:format("Matched ~p, ~p~n", [ScriptPath, RestPath]),
+			case filelib:is_regular(ScriptPath) of
+				true ->
+					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+					FCGI_Params = fcgi_params(FCGI, Rst, ScriptPath, Request, RestPath, Options),
+					FCGI_End = st_fcgi:stdin_end(FCGI_Params),
+					case st_fcgi:execute(Request, FCGI_End) of
+						{ok, Response} ->
+							{send, Response};
+						{error, Reason} ->
+							{error, 500, Reason}
+					end;
+				false ->
+					{error, 404, not_found}
 			end;
 		_ ->
+			FileName = combine_url_path(FileParts, BaseDir),
 			case serve_static_file(FileName, Options) of
 				true ->
 					MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
@@ -239,7 +243,7 @@ rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
 % Fast CGI request - {fcgi, <<"/www/sites/test/php/test.php">>, [{connect, [{"localhost", 9000}]}]}
 rule(Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 	FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-	FCGI_Params = fcgi_params(FCGI, Rst, Script, Request, Options),
+	FCGI_Params = fcgi_params(FCGI, Rst, Script, Request, undefined, Options),
 	FCGI_End = st_fcgi:stdin_end(FCGI_Params),
 	case st_fcgi:execute(Request, FCGI_End) of
 		{ok, Response} ->
@@ -370,12 +374,15 @@ rule(_Rst, Rules, _Request) ->
 %% ===================================================================
 
 
-fcgi_params(FCGI, _Rst, Script, Request, _Options) ->
+fcgi_params(FCGI, _Rst, Script, Request, SetUri, _Options) ->
 	st_fcgi:params(FCGI, [
 			{<<"SCRIPT_FILENAME">>, Script},
 			{<<"QUERY_STRING">>, st_request:query_string(Request)},
 			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
-			{<<"REQUEST_URI">>, stutil:to_binary(st_request:request_uri(Request))},
+			{<<"REQUEST_URI">>, case SetUri of
+									undefined -> stutil:to_binary(st_request:request_uri(Request));
+									_ -> SetUri
+								end},
 			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
 		]).
 
@@ -390,6 +397,16 @@ serve_static_file(FileName, Options) ->
 		false ->
 			false
 	end.
+
+path_contains([Part | UrlParts], Extension, Acc) when byte_size(Part) < byte_size(Extension) ->
+	path_contains(UrlParts, Extension, [Part | Acc]);
+path_contains([Part | UrlParts], Extension, Acc) ->
+	case binary:part(Part, byte_size(Part) - byte_size(Extension), byte_size(Extension)) of
+		Extension -> {match, lists:reverse([Part | Acc]), UrlParts};
+		_ -> path_contains(UrlParts, Extension, [Part | Acc])
+	end;
+path_contains([], _Extension, _Acc) ->
+	false.
 
 
 set_path(Rst, OrigPath) ->

@@ -141,7 +141,7 @@ open_socket(FCGI) ->
             end;
         [] ->
             io:format("FCGI:  No servers to connect to.~n"),
-            {error, no_host}
+            {error, fcgi_no_host}
     end.
 
 %% ====================
