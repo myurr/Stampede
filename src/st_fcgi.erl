@@ -80,7 +80,8 @@ execute(Request, OrigFCGI) ->
 		                {error, NewFCGI#st_fcgi.error}
 		            end;
 		        {error, Reason} ->
-		            {error, Reason};
+		            {error, Reason}
+            end;
 		{error, Reason} ->
 			{error, Reason}
     end.
