@@ -375,7 +375,7 @@ rule(_Rst, Rules, _Request) ->
 
 
 fcgi_params(FCGI, _Rst, Script, Request, SetUri, _Options) ->
-	st_fcgi:params(FCGI, [
+	Settings = [
 			{<<"SCRIPT_FILENAME">>, Script},
 			{<<"QUERY_STRING">>, st_request:query_string(Request)},
 			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
@@ -384,7 +384,9 @@ fcgi_params(FCGI, _Rst, Script, Request, SetUri, _Options) ->
 									_ -> SetUri
 								end},
 			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
-		]).
+		],
+	io:format("Setting fcgi params: ~p~n", [Settings]),
+	st_fcgi:params(FCGI, Settings).
 
 
 serve_static_file(FileName, Options) ->
