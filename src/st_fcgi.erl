@@ -69,17 +69,20 @@ stdin_end(FCGI) ->
 %% ====================
 
 execute(Request, OrigFCGI) ->
-    {ok, FCGI} = open_socket(OrigFCGI),
-    ok = gen_tcp:send(FCGI#st_fcgi.socket, FCGI#st_fcgi.buffer),
-    case receive_reply(FCGI) of
-        {ok, NewFCGI} ->
-            if NewFCGI#st_fcgi.error == <<>> ->
-                st_response:new_from_data(Request, NewFCGI#st_fcgi.output);
-            true ->
-                {error, NewFCGI#st_fcgi.error}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+    case open_socket(OrigFCGI) of
+    	{ok, FCGI} ->
+		    ok = gen_tcp:send(FCGI#st_fcgi.socket, FCGI#st_fcgi.buffer),
+		    case receive_reply(FCGI) of
+		        {ok, NewFCGI} ->
+		            if NewFCGI#st_fcgi.error == <<>> ->
+		                st_response:new_from_data(Request, NewFCGI#st_fcgi.output);
+		            true ->
+		                {error, NewFCGI#st_fcgi.error}
+		            end;
+		        {error, Reason} ->
+		            {error, Reason};
+		{error, Reason} ->
+			{error, Reason}
     end.
 
 
