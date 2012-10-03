@@ -116,10 +116,10 @@ record(FCGI, Type, Data) ->
 build_params([{Key, Value} | Rest], Data) ->
     build_params(Rest,
         <<Data/binary,
-        (if byte_size(Key) > 127 -> 1; true -> 0 end):1,                          % key length encoding
-        (byte_size(Key)):(if byte_size(Key) > 127 -> 63; true -> 7 end),        % key length value
-        (if byte_size(Value) > 127 -> 1; true -> 0 end):1,                        % key length encoding
-        (byte_size(Value)):(if byte_size(Value) > 127 -> 63; true -> 7 end),    % key length value
+        (if byte_size(Key) > 127 -> 1; true -> 0 end):1,                        % key length encoding
+        (byte_size(Key)):(if byte_size(Key) > 127 -> 31; true -> 7 end),        % key length value
+        (if byte_size(Value) > 127 -> 1; true -> 0 end):1,                     	% key length encoding
+        (byte_size(Value)):(if byte_size(Value) > 127 -> 31; true -> 7 end),    % key length value
         Key/binary,
         Value/binary>>);
 build_params([], Data) ->

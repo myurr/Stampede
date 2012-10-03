@@ -1,12 +1,12 @@
 -module(st_request).
 
 % Exported API
--export([new/4, terminate/1, header/3, end_headers/1, execute/3, error_request/4,
-		http_version/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1, content_type/1, content_length/1,
+-export([new/4, terminate/1, header/3, end_headers/1, execute/3, error_request/4, is_ssl/1,
+		http_version/1, http_version_str/1, method/1, url/1, host/1, hostname/1, arg/2, arg/3, keepalive/1, content_type/1, content_length/1,
 		content_read/1, content_unread/1, content_read/2, post_data/1, post_arg/2, post_arg/3, process_post_data/2,
 		if_modified_since/1, lookup_session/2, session/1, save_session/1, site/1, site/2, cookie/2, cookie/3,
 		discard_post_data/2, url_add_args/2, url_arg/2, url_arg/3, if_none_match/1, query_string/1,
-		get_header/2, get_header/3, user_agent/1, request_uri/1
+		get_header/2, get_header/3, get_headers/1, user_agent/1, request_uri/1, raw_socket/1
 		]).
 
 %% ===================================================================
@@ -50,34 +50,42 @@ terminate(Request) ->
 %% Set a header
 %% ====================
 
-header(Request, 'Host', Value) ->
+header(Request, 'Host' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
 	case binary:split(Value, <<$:>>) of
 		[Host, Port] ->
-			{ok, Request#st_request{host = {Host, Port}}};
+			{ok, NewRequest#st_request{host = {Host, Port}}};
 		[Host] ->
-			{ok, Request#st_request{host = {Host, st_socket:port(Request#st_request.socket)}}}
+			{ok, NewRequest#st_request{host = {Host, st_socket:port(NewRequest#st_request.socket)}}}
 	end;
 
-header(Request, 'Content-Length', Value) ->
-	{ok, Request#st_request{content_length = stutil:to_integer(Value)}};
+header(Request, 'Content-Length' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{content_length = stutil:to_integer(Value)}};
 
-header(Request, 'Content-Type', Value) ->
-	{ok, Request#st_request{content_type = Value}};
+header(Request, 'Content-Type' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{content_type = Value}};
 
-header(Request, 'Connection', Value) ->
-	header_connection(Request, [ stutil:trim_str(stutil:bstr_to_lower(C)) || C <- binary:split(Value, <<",">>, [global]) ]);
+header(Request, 'Connection' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	header_connection(NewRequest, [ stutil:trim_str(stutil:bstr_to_lower(C)) || C <- binary:split(Value, <<",">>, [global]) ]);
 
-header(Request, 'If-Modified-Since', Value) ->
-	{ok, Request#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
+header(Request, 'If-Modified-Since' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{if_modified_since = httpd_util:convert_request_date(binary_to_list(Value))}};
 
-header(Request, 'If-None-Match', Value) ->
-	{ok, Request#st_request{if_none_match = Value}};
+header(Request, 'If-None-Match' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{if_none_match = Value}};
 
-header(Request, 'User-Agent', Value) ->
-	{ok, Request#st_request{ua = Value}};
+header(Request, 'User-Agent' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{ua = Value}};
 
-header(Request, 'Cookie', Value) ->
-	{ok, Request#st_request{cookies = decode_cookies(binary:split(Value, <<$;>>, [global]), Request#st_request.cookies)}};
+header(Request, 'Cookie' = Key, Value) ->
+	NewRequest = Request#st_request{headers = [{Key, Value} | Request#st_request.headers]},
+	{ok, NewRequest#st_request{cookies = decode_cookies(binary:split(Value, <<$;>>, [global]), NewRequest#st_request.cookies)}};
 
 header(Request, Key, Value) when is_atom(Key) ->
 	{ok, Request#st_request{headers = [{Key, Value} | Request#st_request.headers]}};
@@ -185,6 +193,12 @@ discard_post_data(Request, Timeout) ->
 http_version(Request) ->
 	Request#st_request.http_version.
 
+http_version_str(Request) ->
+	case Request#st_request.http_version of
+		{Maj, Min} ->
+			<<"HTTP/", (stutil:to_binary(Maj))/binary, $., (stutil:to_binary(Min))/binary>>
+	end.
+
 method(Request) ->
 	Request#st_request.method.
 
@@ -280,6 +294,14 @@ get_header(Request, Key) ->
 get_header(Request, Key, Default) ->
 	proplists:get_value(Key, Request#st_request.headers, Default).
 
+get_headers(Request) ->
+	Request#st_request.headers.
+
+is_ssl(Request) ->
+	st_socket:is_ssl(Request#st_request.socket).
+
+raw_socket(Request) ->
+	Request#st_request.socket.
 
 %% ===================================================================
 %% Handle post data

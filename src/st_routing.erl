@@ -189,7 +189,7 @@ rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
 			{send, Response}
 	end;
 
-rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
+rule(OrigRst, [{symfony_root, Path, Options} | _Rules], Request) ->
 	Rst = append_path(OrigRst, Path),
 	BaseDir = Rst#rst.path,
 	DefaultFile = proplists:get_value(default_path, Options, <<"app.php">>),
@@ -203,14 +203,17 @@ rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
 	ExecExtension = proplists:get_value(exec_extension, Options, <<".php">>),
 
 	case path_contains(FileParts, ExecExtension, []) of
-		{match, ScriptParts, RestParts} ->
+		{match, ScriptParts, _RestParts} ->
+			% Matched a PHP script, so execute that passing in the remaining path information
 			ScriptPath = combine_url_path(ScriptParts, BaseDir),
-			RestPath = combine_url_path(RestParts, <<>>),
-			io:format("Matched ~p, ~p~n", [ScriptPath, RestPath]),
+			% RestPath = combine_url_path(RestParts, <<>>),
 			case filelib:is_regular(ScriptPath) of
 				true ->
 					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-					FCGI_Params = fcgi_params(FCGI, Rst, ScriptPath, Request, RestPath, Options),
+					% FCGI_Params = fcgi_params(FCGI, Rst, ScriptPath, Request, RestPath, Options),
+					FCGI_Params = fcgi_params(FCGI, ScriptPath, Rst, Request, [
+							{<<"SCRIPT_NAME">>, combine_url_path(ScriptParts, <<>>)}
+						]),
 					FCGI_End = st_fcgi:stdin_end(FCGI_Params),
 					case st_fcgi:execute(Request, FCGI_End) of
 						{ok, Response} ->
@@ -221,10 +224,11 @@ rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
 				false ->
 					{error, 404, not_found}
 			end;
-		_ ->
+		false ->
 			FileName = combine_url_path(FileParts, BaseDir),
 			case serve_static_file(FileName, Options) of
 				true ->
+					% Matched a static file
 					MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
 					case file_modified(FileName, Request) of
 						true ->
@@ -235,7 +239,19 @@ rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
 							{send, finalise_response(Response, Rst, Request)}
 					end;
 				false ->
-					rule(Rst, Rules, Request)
+					% Didn't match a static file, so send the request to Symfony
+					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+					% FCGI_Params = fcgi_params(FCGI, Rst, combine_url_path([DefaultFile], BaseDir), Request, st_request:url(Request), Options),
+					FCGI_Params = fcgi_params(FCGI, combine_url_path([DefaultFile], BaseDir), Rst, Request, [
+							
+						]),
+					FCGI_End = st_fcgi:stdin_end(FCGI_Params),
+					case st_fcgi:execute(Request, FCGI_End) of
+						{ok, Response} ->
+							{send, Response};
+						{error, Reason} ->
+							{error, 500, Reason}
+					end
 			end
 	end;
 
@@ -243,7 +259,10 @@ rule(OrigRst, [{symfony_root, Path, Options} | Rules], Request) ->
 % Fast CGI request - {fcgi, <<"/www/sites/test/php/test.php">>, [{connect, [{"localhost", 9000}]}]}
 rule(Rst, [{fcgi, Script, Options} | _Rules], Request) ->
 	FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-	FCGI_Params = fcgi_params(FCGI, Rst, Script, Request, undefined, Options),
+	% FCGI_Params = fcgi_params(FCGI, Rst, Script, Request, undefined, Options),
+	FCGI_Params = fcgi_params(FCGI, Script, Rst, Request, [
+			
+		]),
 	FCGI_End = st_fcgi:stdin_end(FCGI_Params),
 	case st_fcgi:execute(Request, FCGI_End) of
 		{ok, Response} ->
@@ -374,18 +393,29 @@ rule(_Rst, Rules, _Request) ->
 %% ===================================================================
 
 
-fcgi_params(FCGI, _Rst, Script, Request, SetUri, _Options) ->
+fcgi_params(FCGI, Script, Rst, Request, ManualHeaders) ->
+	BaseHeaders = [
+		{<<"HTTP_", (binary:replace(stutil:bstr_to_upper(stutil:to_binary(Header)), <<$->>, <<$_>>, [global]))/binary>>, stutil:to_binary(Value)} 
+			|| {Header, Value} <- st_request:get_headers(Request)
+	],
+	{ok, {{RawIp1, RawIp2, RawIp3, RawIp4}, Port}} = st_socket:peername(st_request:raw_socket(Request)),
 	Settings = [
-			{<<"SCRIPT_FILENAME">>, Script},
 			{<<"QUERY_STRING">>, st_request:query_string(Request)},
+			{<<"SCRIPT_FILENAME">>, Script},
 			{<<"REQUEST_METHOD">>, stutil:to_binary(st_request:method(Request))},
-			{<<"REQUEST_URI">>, case SetUri of
-									undefined -> stutil:to_binary(st_request:request_uri(Request));
-									_ -> SetUri
-								end},
-			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))}
-		],
-	io:format("Setting fcgi params: ~p~n", [Settings]),
+			{<<"CONTENT_LENGTH">>, stutil:to_binary(st_request:content_length(Request))},
+			{<<"CONTENT_TYPE">>, stutil:to_binary(st_request:get_header(Request, 'Content-Type', <<>>))},
+			{<<"DOCUMENT_ROOT">>, stutil:to_binary(Rst#rst.path)},
+			{<<"DOCUMENT_URI">>, stutil:to_binary(st_request:url(Request))},
+			{<<"GATEWAY_INTERFACE">>, <<"CGI/1.1">>},
+			{<<"HTTPS">>, case st_request:is_ssl(Request) of false -> <<"off">>; _ -> <<"on">> end},
+			{<<"REQUEST_URI">>, st_request:request_uri(Request)},
+			{<<"REDIRECT_STATUS">>, <<"200">>},
+			{<<"REMOTE_ADDR">>, stutil:binary_join([stutil:to_binary(Ip) || Ip <- [RawIp1, RawIp2, RawIp3, RawIp4]], <<$.>>)},
+			{<<"REMOTE_PORT">>, stutil:to_binary(Port)},
+			{<<"SERVER_PROTOCOL">>, st_request:http_version_str(Request)},
+			{<<"SERVER_SOFTWARE">>, <<"Stampede/1.0">>}
+		] ++  BaseHeaders ++ ManualHeaders,
 	st_fcgi:params(FCGI, Settings).
 
 

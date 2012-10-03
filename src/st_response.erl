@@ -348,6 +348,6 @@ decode_data(Response, Request, Data) ->
 		{ok, http_eoh, Rest} ->
 			body(Response, Rest);
 		Unknown ->
-			io:format("Unknown packet: ~p~n", [Unknown]),
+			io:format("*** Unknown packet: ~p~n", [Unknown]),
 			{error, bad_data}
 	end.

@@ -1,7 +1,7 @@
 -module(st_socket).
 
 %% API
--export([listen/1, port/1, name/1, accept/1, setopts/2, active_once/1, close/1, send/2, send_file/2, recv/3]).
+-export([listen/1, port/1, name/1, accept/1, setopts/2, active_once/1, close/1, send/2, send_file/2, recv/3, is_ssl/1, peername/1]).
 
 -record(st_socket, {sock = undefined, port = 0, ssl = false, type = undefined, base_packet = raw, options = [], name = <<"undefined">>}).
 
@@ -79,4 +79,10 @@ recv(Socket, Len, Timeout) when Socket#st_socket.ssl == false ->
 	Ret = gen_tcp:recv(Socket#st_socket.sock, Len, Timeout),
 	inet:setopts(Socket#st_socket.sock, [{packet, Socket#st_socket.base_packet}]),
 	Ret.
+
+is_ssl(Socket) ->
+	Socket#st_socket.ssl.
+
+peername(Socket) ->
+	inet:peername(Socket#st_socket.sock).
 

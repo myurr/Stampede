@@ -60,7 +60,7 @@ handle_cast(Request, State) ->
 handle_info(timeout, State) ->
 	% Bootstrap everything...
 	SiteRoutes = [
-		{set_path, <<"/var/www/ecademy2/">>},
+		{set_path, <<"/var/www/ammpo/">>},
 		{site, ecademy}
 	],
 
@@ -73,7 +73,7 @@ handle_info(timeout, State) ->
 		]},
 
 		{method, 'GET', [
-			{symfony_root, <<"colin/web">>, [{connect, [{"localhost", 9000}]}, {default_path, <<"app_dev.php">>}]}
+			{symfony_root, <<"colin/web">>, [{connect, [{"localhost", 9000}]}, {default_path, <<"app.php">>}]}
 		]}
 	],
 
