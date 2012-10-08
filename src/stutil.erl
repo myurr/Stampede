@@ -3,7 +3,7 @@
 -export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0,
 		bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
-		binary_join/2, http_status_number/1, split_lines/1,
+		binary_join/2, http_status_number/1, split_lines/1, truncate_list/2, 
 		greatest/1, least/1, avg/1]).
 
 init() ->
@@ -30,6 +30,17 @@ map_char(N) when N > 10 ->
 	$a + N - 11;
 map_char(N) ->
 	$0 + N - 1.
+
+truncate_list(List, Len) ->
+	truncate_list(List, Len, []).
+
+truncate_list([Item | List], Len, Acc) when Len > 0 ->
+	truncate_list(List, Len - 1, [Item | Acc]);
+truncate_list(_, 0, Acc) ->
+	lists:reverse(Acc);
+truncate_list([], _, Acc) ->
+	lists:reverse(Acc).
+
 
 
 greatest([Item | List]) ->
