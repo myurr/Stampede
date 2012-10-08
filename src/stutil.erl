@@ -3,7 +3,8 @@
 -export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0,
 		bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
-		binary_join/2, http_status_number/1, split_lines/1]).
+		binary_join/2, http_status_number/1, split_lines/1,
+		greatest/1, least/1, avg/1]).
 
 init() ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
@@ -30,6 +31,33 @@ map_char(N) when N > 10 ->
 map_char(N) ->
 	$0 + N - 1.
 
+
+greatest([Item | List]) ->
+	greatest(List, Item);
+greatest([]) ->
+	undefined.
+
+greatest([Item | Rest], Acc) when Item > Acc ->
+	greatest(Rest, Item);
+greatest([_Item | Rest], Acc) ->
+	greatest(Rest, Acc);
+greatest([], Acc) ->
+	Acc.
+
+least([Item | List]) ->
+	least(List, Item);
+least([]) ->
+	undefined.
+
+least([Item | Rest], Acc) when Item < Acc ->
+	least(Rest, Item);
+least([_Item | Rest], Acc) ->
+	least(Rest, Acc);
+least([], Acc) ->
+	Acc.
+
+avg([]) ->
+	undefined.
 
 
 timestamp() ->

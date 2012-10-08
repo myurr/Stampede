@@ -6,6 +6,8 @@
 -export([init/0, new_websocket/5, new_stream/6, ws_init/1, ws_rx/2, send/2, get/2, get/3, set/3,
 			stream_handover/3, stream_post/1]).
 
+-export([request/1]).
+
 
 %% ===================================================================
 %% Definitions
@@ -208,6 +210,9 @@ get(Jqs, Key, Default) ->
 
 set(Jqs, Key, Val) ->
 	Jqs#jqs{data = set_key(Key, Val, Jqs#jqs.data, [])}.
+
+request(Jqs) ->
+	Jqs#jqs.request.
 
 
 %% ===================================================================
