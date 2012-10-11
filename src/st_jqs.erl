@@ -3,7 +3,7 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -export([register_socket/2, socket_to_pid/1, unregister_socket/1, unregister_pid/1]).
--export([init/0, new_websocket/5, new_stream/6, ws_init/1, ws_rx/2, send/2, get/2, get/3, set/3,
+-export([init/0, new_websocket/5, new_stream/6, ws_init/1, ws_rx/2, ws_msg/2, send/2, get/2, get/3, set/3,
 			stream_handover/3, stream_post/1]).
 
 -export([request/1]).
@@ -119,7 +119,7 @@ new_websocket(SocketId, Request, Options, CallBacks, AllowOrigin) ->
 	if Authorised ->
 		Jqs = #jqs{type = websocket, socket_id = SocketId, state = undefined, call_backs = CallBacks, options = Options, request = Request},
 		register_socket(SocketId, self()),
-		st_websocket:connect(Request, [{stmq_format, jquery}, {set, {jqs, Jqs}}] ++ Options, [{init, fun st_jqs:ws_init/1}, {rx, fun st_jqs:ws_rx/2}]);
+		st_websocket:connect(Request, [{stmq_format, jquery}, {set, {jqs, Jqs}}] ++ Options, [{init, fun st_jqs:ws_init/1}, {rx, fun st_jqs:ws_rx/2}, {msg, fun st_jqs:ws_msg/2}]);
 	true ->
 		io:format("JQuery socket invalid origin (ws): ~p~n", [st_request:get_header(Request, <<"origin">>, undefined)]),
 		{error, 403, <<"Invalid Origin">>}
@@ -248,6 +248,21 @@ ws_rx(WS, Msg) ->
 		end
 	end.
 
+ws_msg(WS, Msg) ->
+	OrigJqs = st_websocket:get(WS, jqs),
+	Jqs = OrigJqs#jqs{ws = WS},
+
+	Fun = proplists:get_value(msg, Jqs#jqs.call_backs),
+	if Fun == undefined -> 
+		io:format("~n>>> Unexpected message in JQuery Socket main loop: ~p~n~n", [Msg]),
+		{ok, st_websocket:set(WS, jqs, Jqs)};
+	true ->
+		case Fun(Jqs, Msg) of
+			ok -> {ok, st_websocket:set(WS, jqs, Jqs)};
+			{ok, NewJqs} -> {ok, st_websocket:set(WS, jqs, NewJqs)};
+			stop -> stop
+		end
+	end.
 
 
 %% ===================================================================
@@ -298,8 +313,16 @@ stream_main_loop(Jqs) ->
 			stream_main_loop(Jqs);
 
 		Msg ->
-			io:format("~n>>> Unexpected message in JQuery Socket main loop: ~p~n~n", [Msg]),
-			stream_main_loop(Jqs)
+			Fun = proplists:get_value(msg, Jqs#jqs.call_backs),
+			if Fun == undefined -> 
+				io:format("~n>>> Unexpected message in JQuery Socket main loop: ~p~n~n", [Msg]);
+			true ->
+				case Fun(Jqs, Msg) of
+					ok -> stream_main_loop(Jqs);
+					{ok, NewJqs} -> stream_main_loop(NewJqs);
+					stop -> stop
+				end
+			end
 	end.
 
 terminate(_Jqs) ->

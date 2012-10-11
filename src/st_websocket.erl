@@ -130,8 +130,20 @@ main_loop(WS) ->
 			main_loop(WS);
 
 		Msg ->
-			io:format("~n>>> Unexpected message in websocket main loop: ~p~n~n", [Msg]),
-			main_loop(WS)
+			case proplists:get_value(msg, WS#wsstate.call_backs) of
+				Fun when is_function(Fun) ->
+					case Fun(WS, Msg) of
+						ok ->
+							main_loop(WS);
+						{ok, NewWS} ->
+							main_loop(NewWS);
+						stop ->
+							stop
+					end;
+				undefined ->
+					io:format("~n>>> Unexpected message in websocket main loop: ~p~n~n", [Msg]),
+					main_loop(WS)
+			end
 	after
 		Timeout ->
 			terminate(WS)
