@@ -1,7 +1,7 @@
 -module(st_fcgi).
 
 % Exported API
--export([new/1, params/2, stdin/2, stdin_end/1, execute/2, set_timeout/2]).
+-export([new/1, params/2, params_end/1, params_end/2, stdin/2, stdin_end/1, execute/2, set_timeout/2]).
 
 %% ===================================================================
 %% Definitions
@@ -49,15 +49,23 @@ params(FCGI, ParamList) ->
     Data = build_params(ParamList, <<>>),
     record(FCGI, ?FCGI_PARAMS, Data).
 
+params_end(FCGI) ->
+	record(FCGI, ?FCGI_PARAMS, <<>>).
+
+params_end(FCGI, ParamList) ->
+    Data = build_params(ParamList, <<>>),
+    params_end(record(FCGI, ?FCGI_PARAMS, Data)).
 
 %% ====================
 %% Provide the body content
 %% ====================
 
 stdin(FCGI, Data) when byte_size(Data) > 65535 ->
+	% io:format("Sending post data: ~s~n", [binary:part(Data, 0, 65535)]),
     NewFCGI = record(FCGI, ?FCGI_STDIN, binary:part(Data, 0, 65535)),
     stdin(NewFCGI, binary:part(Data, 65535, byte_size(Data) - 65535));
 stdin(FCGI, Data) ->
+	% io:format("Sending post data: ~s~n", [Data]),
     record(FCGI, ?FCGI_STDIN, Data).
 
 stdin_end(FCGI) ->
@@ -71,10 +79,11 @@ stdin_end(FCGI) ->
 execute(Request, OrigFCGI) ->
     case open_socket(OrigFCGI) of
     	{ok, FCGI} ->
+    		% io:format("Sending to FCGI: ~p~n", [FCGI#st_fcgi.buffer]),
 		    ok = gen_tcp:send(FCGI#st_fcgi.socket, FCGI#st_fcgi.buffer),
 		    case receive_reply(FCGI) of
 		        {ok, NewFCGI} ->
-		            if NewFCGI#st_fcgi.error == <<>> ->
+		            if NewFCGI#st_fcgi.output /= <<>> ->
 		                st_response:new_from_data(Request, NewFCGI#st_fcgi.output);
 		            true ->
 		                {error, NewFCGI#st_fcgi.error}
@@ -175,10 +184,11 @@ receive_reply(FCGI) ->
     end.
 
 process_reply_packet(FCGI, ?FCGI_STDOUT, Data) ->
+    % io:format("FCGI Message: ~p~n", [Data]),
     {ok, FCGI#st_fcgi{output = <<(FCGI#st_fcgi.output)/binary, Data/binary>>}};
 
 process_reply_packet(FCGI, ?FCGI_STDERR, Data) ->
-    io:format("Error Out: ~p~n", [Data]),
+    % io:format("FCGI Error Out: ~p~n", [Data]),
     {ok, FCGI#st_fcgi{error = <<(FCGI#st_fcgi.error)/binary, Data/binary>>}};
 
 process_reply_packet(FCGI, ?FCGI_END_REQUEST, _Data) ->

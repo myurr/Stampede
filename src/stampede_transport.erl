@@ -231,7 +231,7 @@ handle_request(State, Output) ->
 
     	{send, Response} ->
     		{ok, Data, AdditionalContent, KeepAlive} = st_response:output_response(Response),
-            % io:format("Sending:~n~n~p~n~n", [Data]),
+             %io:format("Sending:~n~n~p~n~n", [Data]),
     		ok = st_socket:send(State#transstate.socket, Data),
     		case AdditionalContent of
     			undefined ->

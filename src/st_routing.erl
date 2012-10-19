@@ -22,6 +22,7 @@
 %% ====================
 
 route(Request, Rules, SiteDefinitions) ->
+	% io:format("Routing URL ~p~n", [st_request:url(Request)]),
 	Rst = #rst{site_definitions = SiteDefinitions, url_parts = split_url(st_request:url(Request)), routes = Rules},
 	rule(Rst, Rules, Request).
 
@@ -191,68 +192,21 @@ rule(Rst, [{erlang, CallDetails} | Rules], Request) ->
 
 rule(OrigRst, [{symfony_root, Path, Options} | _Rules], Request) ->
 	Rst = append_path(OrigRst, Path),
-	BaseDir = Rst#rst.path,
-	DefaultFile = proplists:get_value(default_path, Options, <<"app.php">>),
-	
-	FileParts = case Rst#rst.url_parts of
-		[] -> [DefaultFile];
-		[<<>>] -> [DefaultFile];
-		Parts -> Parts
-	end,
 
-	ExecExtension = proplists:get_value(exec_extension, Options, <<".php">>),
-
-	case path_contains(FileParts, ExecExtension, []) of
-		{match, ScriptParts, _RestParts} ->
-			% Matched a PHP script, so execute that passing in the remaining path information
-			ScriptPath = combine_url_path(ScriptParts, BaseDir),
-			% RestPath = combine_url_path(RestParts, <<>>),
-			case filelib:is_regular(ScriptPath) of
-				true ->
-					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-					% FCGI_Params = fcgi_params(FCGI, Rst, ScriptPath, Request, RestPath, Options),
-					FCGI_Params = fcgi_params(FCGI, ScriptPath, Rst, Request, [
-							{<<"SCRIPT_NAME">>, combine_url_path(ScriptParts, <<>>)}
-						]),
-					FCGI_End = st_fcgi:stdin_end(FCGI_Params),
-					case st_fcgi:execute(Request, FCGI_End) of
-						{ok, Response} ->
-							{send, Response};
-						{error, Reason} ->
-							{error, 500, Reason}
-					end;
-				false ->
-					{error, 404, not_found}
+	ReqMethod = st_request:method(Request),
+	if ReqMethod == 'POST' ->
+			AllowSize = stutil:size_to_bytes(proplists:get_value(max_post_data, Options, {64, kb})),
+			Timeout = proplists:get_value(timeout, Options, 60) * 1000,
+			ContentLength = st_request:content_length(Request),
+			ContentRead = st_request:content_read(Request),
+			if AllowSize >= ContentLength, ContentRead == 0 ->
+				NewRequest = st_request:process_post_data(Request, Timeout),
+				process_symfony_request(Rst, Options, NewRequest, st_request:post_data(NewRequest));
+			true ->
+				{error, 400, <<"Post data too long.">>}
 			end;
-		false ->
-			FileName = combine_url_path(FileParts, BaseDir),
-			case serve_static_file(FileName, Options) of
-				true ->
-					% Matched a static file
-					MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
-					case file_modified(FileName, Request) of
-						true ->
-							{ok, Response} = st_response:new(Request, ok, [{<<"Content-Type">>, MimeType}], {file, FileName}),
-							{send, finalise_response(Response, Rst, Request)};
-						false ->
-							{ok, Response} = st_response:new(Request, not_modified, [{<<"Content-Type">>, MimeType}], <<>>),
-							{send, finalise_response(Response, Rst, Request)}
-					end;
-				false ->
-					% Didn't match a static file, so send the request to Symfony
-					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
-					% FCGI_Params = fcgi_params(FCGI, Rst, combine_url_path([DefaultFile], BaseDir), Request, st_request:url(Request), Options),
-					FCGI_Params = fcgi_params(FCGI, combine_url_path([DefaultFile], BaseDir), Rst, Request, [
-							
-						]),
-					FCGI_End = st_fcgi:stdin_end(FCGI_Params),
-					case st_fcgi:execute(Request, FCGI_End) of
-						{ok, Response} ->
-							{send, Response};
-						{error, Reason} ->
-							{error, 500, Reason}
-					end
-			end
+		true ->
+			process_symfony_request(Rst, Options, Request, <<>>)
 	end;
 
 
@@ -352,7 +306,15 @@ rule(Rst, [{web_socket, AllowOrigin, Options, CallBacks} | Rules], Request) ->
 			rule(Rst, Rules, Request)
 	end;
 
-
+% Debug line
+rule(Rst, [{debug, Call} | Rules], Request) ->
+	case Call of
+		_ when is_binary(Call) ->
+			io:format("> Debug: ~s~n", [Call]);
+		_ ->
+			io:format("Unknown debug call: ~p~n", [Call])
+	end,
+	rule(Rst, Rules, Request);
 
 % Out of rules...
 rule(Rst, [], Request) ->
@@ -393,6 +355,89 @@ rule(_Rst, Rules, _Request) ->
 %% ===================================================================
 
 
+process_symfony_request(Rst, Options, Request, PostData) ->
+	BaseDir = Rst#rst.path,
+	DefaultFile = proplists:get_value(default_path, Options, <<"app.php">>),
+
+	FileParts = case Rst#rst.url_parts of
+		[] -> [DefaultFile];
+		[<<>>] -> [DefaultFile];
+		Parts -> Parts
+	end,
+
+	ExecExtension = proplists:get_value(exec_extension, Options, <<".php">>),
+
+	% io:format("Path is ~p, path_contains returns ~p~n", [FileParts, path_contains(FileParts, ExecExtension, [])]),
+
+	case path_contains(FileParts, ExecExtension, []) of
+		{match, ScriptParts, _RestParts} ->
+			% Matched a PHP script, so execute that passing in the remaining path information
+			ScriptPath = combine_url_path(ScriptParts, BaseDir),
+			% RestPath = combine_url_path(RestParts, <<>>),
+			case filelib:is_regular(ScriptPath) of
+				true ->
+					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+					% FCGI_Params = fcgi_params(FCGI, Rst, ScriptPath, Request, RestPath, Options),
+					FCGI_Params = fcgi_params(FCGI, ScriptPath, Rst, Request, [
+							{<<"SCRIPT_NAME">>, combine_url_path(ScriptParts, <<>>)}
+						]),
+					FCGI_Post = if PostData == <<>> ->
+						FCGI_Params;
+					true ->
+						st_fcgi:stdin(FCGI_Params, PostData)
+					end,
+					FCGI_End = st_fcgi:stdin_end(FCGI_Post),
+					case st_fcgi:execute(Request, FCGI_End) of
+						{ok, Response} ->
+							{send, Response};
+						{error, Reason} ->
+							{error, 500, Reason}
+					end;
+				false ->
+					{error, 404, not_found}
+			end;
+		false ->
+			FileName = combine_url_path(FileParts, BaseDir),
+			% io:format("FileName is ~p, serve_static_file is ~p~n", [FileName, serve_static_file(FileName, Options)]),
+			case serve_static_file(FileName, Options) of
+				true ->
+					% Matched a static file
+					MimeType = proplists:get_value(mime_type, Options, st_mime_type:get_type(filename:extension(FileName))),
+					case file_modified(FileName, Request) of
+						true ->
+							{ok, Response} = st_response:new(Request, ok, [{<<"Content-Type">>, MimeType}], {file, FileName}),
+							{send, finalise_response(Response, Rst, Request)};
+						false ->
+							{ok, Response} = st_response:new(Request, not_modified, [{<<"Content-Type">>, MimeType}], <<>>),
+							{send, finalise_response(Response, Rst, Request)}
+					end;
+				false ->
+					% io:format("passing to fcgi~n"),
+					% Didn't match a static file, so send the request to Symfony
+					FCGI = st_fcgi:new(proplists:get_value(connect, Options, [])),
+					% FCGI_Params = fcgi_params(FCGI, Rst, combine_url_path([DefaultFile], BaseDir), Request, st_request:url(Request), Options),
+					FCGI_Params = fcgi_params(FCGI, combine_url_path([DefaultFile], BaseDir), Rst, Request, [
+						]),
+					FCGI_Post = if PostData == <<>> ->
+						FCGI_Params;
+					true ->
+						% io:format("Post Data is ~p~n", [PostData]),
+						st_fcgi:stdin(FCGI_Params, PostData)
+					end,
+					FCGI_End = st_fcgi:stdin_end(FCGI_Post),
+					case st_fcgi:execute(Request, FCGI_End) of
+						{ok, Response} ->
+							% io:format("FCGI gave a response~n"),
+							{send, Response};
+						{error, Reason} ->
+							% io:format("FCGI had a error~n"),
+							{error, 500, Reason}
+					end
+			end
+	end.
+
+
+
 fcgi_params(FCGI, Script, Rst, Request, ManualHeaders) ->
 	BaseHeaders = [
 		{<<"HTTP_", (binary:replace(stutil:bstr_to_upper(stutil:to_binary(Header)), <<$->>, <<$_>>, [global]))/binary>>, stutil:to_binary(Value)} 
@@ -416,7 +461,7 @@ fcgi_params(FCGI, Script, Rst, Request, ManualHeaders) ->
 			{<<"SERVER_PROTOCOL">>, st_request:http_version_str(Request)},
 			{<<"SERVER_SOFTWARE">>, <<"Stampede/1.0">>}
 		] ++  BaseHeaders ++ ManualHeaders,
-	st_fcgi:params(FCGI, Settings).
+	st_fcgi:params_end(FCGI, Settings).
 
 
 serve_static_file(FileName, Options) ->
