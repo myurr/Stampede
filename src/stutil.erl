@@ -219,6 +219,8 @@ trim_front(<<9, Str/binary>>) ->
 trim_front(Str) ->
 	Str.
 
+trim_rear(<<>>) ->
+	<<>>;
 trim_rear(Str) ->
 	case binary:last(Str) of
 		$  -> trim_rear(binary:part(Str, 0, byte_size(Str) - 1));
