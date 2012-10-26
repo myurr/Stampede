@@ -228,6 +228,9 @@ ws_init(WS) ->
 		case Fun(Jqs) of
 			ok -> {ok, st_websocket:set(WS, jqs, Jqs)};
 			{ok, NewJqs} -> {ok, st_websocket:set(WS, jqs, NewJqs)};
+			{error, ErrorCode, ErrorDetail} ->
+				io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+				{ok, st_websocket:set(WS, jqs, Jqs)};
 			stop -> stop
 		end
 	end.
@@ -244,6 +247,9 @@ ws_rx(WS, Msg) ->
 		case Fun(Jqs, stjp:get(Json, <<"data">>, <<>>)) of
 			ok -> {ok, st_websocket:set(WS, jqs, Jqs)};
 			{ok, NewJqs} -> {ok, st_websocket:set(WS, jqs, NewJqs)};
+			{error, ErrorCode, ErrorDetail} ->
+				io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+				{ok, st_websocket:set(WS, jqs, Jqs)};
 			stop -> stop
 		end
 	end.
@@ -260,6 +266,9 @@ ws_msg(WS, Msg) ->
 		case Fun(Jqs, Msg) of
 			ok -> {ok, st_websocket:set(WS, jqs, Jqs)};
 			{ok, NewJqs} -> {ok, st_websocket:set(WS, jqs, NewJqs)};
+			{error, ErrorCode, ErrorDetail} ->
+				io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+				{ok, st_websocket:set(WS, jqs, Jqs)};
 			stop -> stop
 		end
 	end.
@@ -284,6 +293,9 @@ stream_handover(Socket, Request, OrigJqs) ->
 		case Fun(Jqs) of
 			ok -> stream_main_loop(Jqs);
 			{ok, NewJqs} -> stream_main_loop(NewJqs);
+			{error, ErrorCode, ErrorDetail} ->
+				io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+				stream_main_loop(Jqs);
 			stop -> stop
 		end
 	end.
@@ -304,6 +316,9 @@ stream_main_loop(Jqs) ->
 				case Fun(Jqs, Msg) of
 					ok -> stream_main_loop(Jqs);
 					{ok, NewJqs} -> stream_main_loop(NewJqs);
+					{error, ErrorCode, ErrorDetail} ->
+						io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+						stream_main_loop(Jqs);
 					stop -> stop
 				end
 			end;
@@ -320,6 +335,9 @@ stream_main_loop(Jqs) ->
 				case Fun(Jqs, Msg) of
 					ok -> stream_main_loop(Jqs);
 					{ok, NewJqs} -> stream_main_loop(NewJqs);
+					{error, ErrorCode, ErrorDetail} ->
+						io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+						stream_main_loop(Jqs);
 					stop -> stop
 				end
 			end
