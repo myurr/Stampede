@@ -324,8 +324,25 @@ stream_main_loop(Jqs) ->
 			end;
 
 		{st_mq, Msg} ->
-			send(Jqs, st_mq:msg_data(Msg)),
-			stream_main_loop(Jqs);
+			case proplists:get_value(stmq_msg, Jqs#jqs.options, undefined) of
+				auto_forward ->
+					send(Jqs, st_mq:msg_data(Msg)),
+					stream_main_loop(Jqs);
+				undefined ->
+					Fun = proplists:get_value(msg, Jqs#jqs.call_backs),
+					if Fun == undefined -> 
+						io:format("~n>>> Unexpected st_mq message in JQuery Socket main loop: ~p~n~n", [Msg]);
+					true ->
+						case Fun(Jqs, Msg) of
+							ok -> stream_main_loop(Jqs);
+							{ok, NewJqs} -> stream_main_loop(NewJqs);
+							{error, ErrorCode, ErrorDetail} ->
+								io:format("WS Error: ~p : ~p~n", [ErrorCode, ErrorDetail]),
+								stream_main_loop(Jqs);
+							stop -> stop
+						end
+					end
+			end;
 
 		Msg ->
 			Fun = proplists:get_value(msg, Jqs#jqs.call_backs),

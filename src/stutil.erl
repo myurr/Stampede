@@ -1,16 +1,22 @@
 -module(stutil).
 
--export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0,
+-export([init/0, to_binary/1, to_integer/1, to_float/1, timestamp/0, timestamp_ms/0, timestamp_micro/0, log_ts/0, format_log_date/1,
 		bstr_to_lower/1, bstr_to_upper/1, char_to_lower/1, char_to_upper/1,
 		urldecode/1, http_status_code/1, make_list/1, random_string/1, trim_str/1, trim_front/1, trim_rear/1, size_to_bytes/1,
 		binary_join/2, http_status_number/1, split_lines/1, truncate_list/2, 
-		greatest/1, least/1, avg/1]).
+		max/2, greatest/1, least/1, avg/1]).
 
 init() ->
 	<<A:32, B:32, C:32>> = crypto:rand_bytes(12),
 	random:seed(A,B,C),
 	ok.
 
+log_ts() ->
+	{{Year, Month, Day}, {Hour, Minute, Seconds}} = calendar:now_to_local_time(now()),
+	format_log_date({{Year, Month, Day}, {Hour, Minute, Seconds}}).
+
+format_log_date({{Year, Month, Day}, {Hour, Minute, Seconds}}) ->
+	iolist_to_binary(io_lib:format("~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w", [Year, Month, Day, Hour, Minute, round(Seconds)])).
 
 %%% Generate Random Strings
 
@@ -42,6 +48,8 @@ truncate_list([], _, Acc) ->
 	lists:reverse(Acc).
 
 
+max(A, B) ->
+	if A >= B -> A; true -> B end.
 
 greatest([Item | List]) ->
 	greatest(List, Item);

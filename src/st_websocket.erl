@@ -126,8 +126,26 @@ main_loop(WS) ->
 			terminate(WS);
 
 		{st_mq, Msg} ->
-			send_message(WS, st_mq:msg_data(Msg)),
-			main_loop(WS);
+			case proplists:get_value(stmq_msg, WS#wsstate.options, undefined) of
+				auto_forward ->
+					send_message(WS, st_mq:msg_data(Msg)),
+					main_loop(WS);
+				undefined ->
+					case proplists:get_value(msg, WS#wsstate.call_backs) of
+						Fun when is_function(Fun) ->
+							case Fun(WS, Msg) of
+								ok ->
+									main_loop(WS);
+								{ok, NewWS} ->
+									main_loop(NewWS);
+								stop ->
+									stop
+							end;
+						undefined ->
+							io:format("~n>>> Unexpected st_mq message in websocket main loop: ~p~n~n", [Msg]),
+							main_loop(WS)
+					end
+			end;
 
 		Msg ->
 			case proplists:get_value(msg, WS#wsstate.call_backs) of
